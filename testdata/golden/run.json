@@ -1,0 +1,194 @@
+{
+    "schema_version": 1,
+    "tool": {
+        "name": "dnsbench",
+        "version": "0.1.0",
+        "commit": "a1b2c3d"
+    },
+    "run": {
+        "started_at": "2026-08-28T09:14:02-03:00",
+        "duration_s": 47.3,
+        "complete": true,
+        "rounds": 5,
+        "profile": "balanced",
+        "weights": {
+            "latency": 0.2,
+            "recursion": 0.1,
+            "stability": 0.15,
+            "reliability": 0.15,
+            "edge": 0.25,
+            "encrypted": 0.05,
+            "capability": 0.05,
+            "privacy": 0.05
+        }
+    },
+    "network": {
+        "asn": "AS64496",
+        "asn_org": "EXAMPLE TELECOM",
+        "interface": "wlp3s0",
+        "ipv6": false,
+        "region": "SA",
+        "region_source": "rir",
+        "vpn_detected": true,
+        "dns_interception": false
+    },
+    "datasets": {
+        "catalog": {
+            "source": "embedded",
+            "version": 3,
+            "providers": 16
+        },
+        "domains": {
+            "warm": "tranco:K2XVW",
+            "regional": "sa",
+            "cold_mode": "own"
+        },
+        "cdn_hosts": {
+            "total": 4,
+            "stale": 1
+        }
+    },
+    "results": [
+        {
+            "key": "cloudflare",
+            "label": "Cloudflare",
+            "is_cache": false,
+            "excluded": null,
+            "rank": 1,
+            "tier": 1,
+            "score": 91.7,
+            "score_ci": [
+                89.2,
+                93.4
+            ],
+            "subscores": {
+                "latency": 100,
+                "recursion": 100,
+                "stability": 100,
+                "reliability": 100,
+                "edge": 74.2,
+                "encrypted": 100,
+                "capability": 90,
+                "privacy": 70
+            },
+            "probes": {
+                "warm": {
+                    "n": 5,
+                    "expected": 5,
+                    "p50": 14.4,
+                    "p95": 21.7,
+                    "max": 21.7,
+                    "mean": 15.9,
+                    "jitter": 3.3,
+                    "loss": 0
+                },
+                "doh": {
+                    "n": 5,
+                    "expected": 5,
+                    "p50": 103,
+                    "p95": 117.7,
+                    "max": 117.7,
+                    "mean": 106.6,
+                    "jitter": 7.2,
+                    "loss": 0,
+                    "http_version": "1.1"
+                }
+            },
+            "edge": {
+                "median_penalty_ms": 3.9,
+                "hosts": [
+                    {
+                        "host": "www.microsoft.com",
+                        "answer": "23.55.0.0",
+                        "connect_ms": 15.1,
+                        "penalty_ms": 3.9,
+                        "stale": false
+                    },
+                    {
+                        "host": "cdn.example.invalid",
+                        "answer": null,
+                        "connect_ms": null,
+                        "penalty_ms": null,
+                        "stale": true
+                    }
+                ]
+            },
+            "capabilities": {
+                "dnssec_validating": true,
+                "filtering": {
+                    "ads": false,
+                    "malware": false
+                },
+                "transports": [
+                    "udp",
+                    "tcp",
+                    "dot",
+                    "doh"
+                ],
+                "ipv6": true
+            },
+            "declared": [
+                "nolog",
+                "nofilter"
+            ],
+            "warnings": [
+                ]
+            },
+            {
+                "key": "dns4eu-protective",
+                "label": "DNS4EU (protective)",
+                "is_cache": false,
+                "excluded": "unreachable",
+                "rank": null,
+                "tier": null,
+                "score": null,
+                "score_ci": null,
+                "subscores": {
+                    "latency": null,
+                    "recursion": null,
+                    "stability": null,
+                    "reliability": 0,
+                    "edge": null,
+                    "encrypted": null,
+                    "capability": 0,
+                    "privacy": 0
+                },
+                "probes": {
+                    "warm": {
+                        "n": 0,
+                        "expected": 40,
+                        "p50": null,
+                        "p95": null,
+                        "max": null,
+                        "mean": null,
+                        "jitter": null,
+                        "loss": 100
+                    }
+                },
+                "edge": {
+                    "median_penalty_ms": null,
+                    "hosts": [
+                        ]
+                    },
+                    "capabilities": {
+                        "dnssec_validating": null,
+                        "filtering": {
+                            },
+                            "transports": [
+                                ],
+                                "ipv6": false
+                            },
+                            "declared": [
+                                ],
+                                "warnings": [
+                                    ]
+                                }
+                            ],
+                            "warnings": [
+                                {
+                                    "level": "warn",
+                                    "key": "network",
+                                    "message": "tunnel interfaces are up: tailscale0"
+                                }
+                            ]
+                        }
