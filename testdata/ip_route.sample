@@ -1,0 +1,5 @@
+default via 192.0.2.1 dev wlp3s0 proto dhcp src 192.0.2.113 metric 600 
+default via 192.0.2.1 dev wlp14s0f3u3 proto dhcp src 192.0.2.114 metric 601 
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 linkdown 
+192.0.2.0/24 dev wlp3s0 proto kernel scope link src 192.0.2.113 metric 600 
+192.0.2.0/24 dev wlp14s0f3u3 proto kernel scope link src 192.0.2.114 metric 601 
