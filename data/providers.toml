@@ -1,0 +1,191 @@
+# dnsbench — curated provider catalog
+# Embedded into the binary via $embed_file. See docs/DATA.md for inclusion criteria.
+#
+# Endpoints verified 2026-08-28. Providers change endpoints; verify before trusting.
+# Tag vocabulary is a closed set — see docs/DATA.md. Declared-only tags are never
+# allowed to contribute to a measured subscore.
+
+version = 3
+generated = "2026-08-28"
+
+# ── NextDNS ──────────────────────────────────────────────────────────────────
+# The __PROFILE__ placeholder is substituted from --nextdns-id or config.
+# Without an ID this entry is skipped and only the public resolver is tested.
+[[provider]]
+key      = "nextdns"
+label    = "NextDNS (profile)"
+udp4     = ["45.90.28.0", "45.90.30.0"]
+udp6     = ["2a07:a8c0::__PROFILE6__", "2a07:a8c1::__PROFILE6__"]
+dot      = "__PROFILE__.dns.nextdns.io"
+doh      = "https://dns.nextdns.io/__PROFILE__"
+tags     = ["dnssec", "ecs", "nolog", "configurable"]
+homepage = "https://nextdns.io"
+notes    = "IPv4 anycast applies the profile only with a Linked IP; on mobile use DoT/DoH."
+
+[[provider]]
+key      = "nextdns-public"
+label    = "NextDNS (public)"
+udp4     = ["45.90.28.0"]
+dot      = "dns.nextdns.io"
+doh      = "https://dns.nextdns.io"
+tags     = ["dnssec", "nolog", "nofilter"]
+homepage = "https://nextdns.io"
+
+# ── Cloudflare ───────────────────────────────────────────────────────────────
+[[provider]]
+key      = "cloudflare"
+label    = "Cloudflare"
+udp4     = ["1.1.1.1", "1.0.0.1"]
+udp6     = ["2606:4700:4700::1111", "2606:4700:4700::1001"]
+dot      = "one.one.one.one"
+doh      = "https://cloudflare-dns.com/dns-query"
+tags     = ["dnssec", "nolog", "nofilter"]
+homepage = "https://developers.cloudflare.com/1.1.1.1/setup"
+notes    = "No ECS by design. Expect an edge penalty far from a Cloudflare PoP."
+
+[[provider]]
+key      = "cloudflare-security"
+label    = "Cloudflare Security"
+udp4     = ["1.1.1.2", "1.0.0.2"]
+udp6     = ["2606:4700:4700::1112", "2606:4700:4700::1002"]
+dot      = "security.cloudflare-dns.com"
+doh      = "https://security.cloudflare-dns.com/dns-query"
+tags     = ["dnssec", "nolog", "malware"]
+homepage = "https://developers.cloudflare.com/1.1.1.1/setup"
+
+# ── Quad9 ────────────────────────────────────────────────────────────────────
+# Three variants are shipped deliberately: the ECS difference between 9.9.9.9 and
+# 9.9.9.11 is one of the clearest demonstrations of what the edge probe measures.
+[[provider]]
+key      = "quad9"
+label    = "Quad9"
+udp4     = ["9.9.9.9", "149.112.112.112"]
+udp6     = ["2620:fe::fe", "2620:fe::9"]
+dot      = "dns.quad9.net"
+doh      = "https://dns.quad9.net/dns-query"
+tags     = ["dnssec", "malware", "nolog", "nonprofit"]
+homepage = "https://quad9.net"
+notes    = "No ECS. Privacy-motivated; costs CDN mapping quality. Compare with quad9-ecs."
+
+[[provider]]
+key      = "quad9-ecs"
+label    = "Quad9 (ECS)"
+udp4     = ["9.9.9.11", "149.112.112.11"]
+udp6     = ["2620:fe::11", "2620:fe::fe:11"]
+dot      = "dns11.quad9.net"
+doh      = "https://dns11.quad9.net/dns-query"
+tags     = ["dnssec", "ecs", "malware", "nolog", "nonprofit"]
+homepage = "https://quad9.net"
+notes    = "Prefer over quad9 where CDN performance matters."
+
+[[provider]]
+key      = "quad9-unsecured"
+label    = "Quad9 (unfiltered)"
+udp4     = ["9.9.9.10", "149.112.112.10"]
+udp6     = ["2620:fe::10", "2620:fe::fe:10"]
+dot      = "dns10.quad9.net"
+doh      = "https://dns10.quad9.net/dns-query"
+tags     = ["ecs", "nolog", "nofilter", "nonprofit"]
+homepage = "https://quad9.net"
+notes    = "No DNSSEC validation, no filtering. Baseline for isolating filtering cost."
+
+# ── AdGuard ──────────────────────────────────────────────────────────────────
+[[provider]]
+key      = "adguard"
+label    = "AdGuard"
+udp4     = ["94.140.14.14", "94.140.15.15"]
+udp6     = ["2a10:50c0::ad1:ff", "2a10:50c0::ad2:ff"]
+dot      = "dns.adguard-dns.com"
+doh      = "https://dns.adguard-dns.com/dns-query"
+tags     = ["dnssec", "ecs", "ads", "malware", "nolog"]
+homepage = "https://adguard-dns.io/en/public-dns.html"
+
+[[provider]]
+key      = "adguard-unfiltered"
+label    = "AdGuard (unfiltered)"
+udp4     = ["94.140.14.140", "94.140.14.141"]
+udp6     = ["2a10:50c0::1:ff", "2a10:50c0::2:ff"]
+dot      = "unfiltered.adguard-dns.com"
+doh      = "https://unfiltered.adguard-dns.com/dns-query"
+tags     = ["dnssec", "ecs", "nolog", "nofilter"]
+homepage = "https://adguard-dns.io/en/public-dns.html"
+
+# ── Mullvad ──────────────────────────────────────────────────────────────────
+[[provider]]
+key      = "mullvad"
+label    = "Mullvad"
+udp4     = ["194.242.2.2"]
+udp6     = ["2a07:e340::2"]
+dot      = "dns.mullvad.net"
+doh      = "https://dns.mullvad.net/dns-query"
+tags     = ["dnssec", "nolog", "nofilter", "audited"]
+homepage = "https://mullvad.net/en/help/dns-over-https-and-dns-over-tls"
+notes    = "RAM-only servers, no ECS. Modest PoP footprint outside Europe."
+
+[[provider]]
+key      = "mullvad-base"
+label    = "Mullvad (base)"
+udp4     = ["194.242.2.4"]
+udp6     = ["2a07:e340::4"]
+dot      = "base.dns.mullvad.net"
+doh      = "https://base.dns.mullvad.net/dns-query"
+tags     = ["dnssec", "nolog", "ads", "malware", "audited"]
+homepage = "https://github.com/mullvad/dns-adblock"
+
+# ── Control D ────────────────────────────────────────────────────────────────
+[[provider]]
+key      = "controld-unfiltered"
+label    = "Control D (unfiltered)"
+udp4     = ["76.76.2.0", "76.76.10.0"]
+udp6     = ["2606:1a40::", "2606:1a40:1::"]
+dot      = "p0.freedns.controld.com"
+doh      = "https://freedns.controld.com/p0"
+tags     = ["dnssec", "nolog", "nofilter", "configurable"]
+homepage = "https://controld.com/free-dns"
+
+[[provider]]
+key      = "controld-ads"
+label    = "Control D (ads)"
+udp4     = ["76.76.2.2", "76.76.10.2"]
+udp6     = ["2606:1a40::2", "2606:1a40:1::2"]
+dot      = "p2.freedns.controld.com"
+doh      = "https://freedns.controld.com/p2"
+tags     = ["dnssec", "nolog", "ads", "malware", "configurable"]
+homepage = "https://controld.com/free-dns"
+
+# ── ECS reference implementations ────────────────────────────────────────────
+# Included despite failing the logging criterion: they are the strongest ECS
+# baseline available and removing them would weaken the edge probe. Their tags
+# reflect that honestly — no nolog claim is made on their behalf.
+[[provider]]
+key      = "google"
+label    = "Google"
+udp4     = ["8.8.8.8", "8.8.4.4"]
+udp6     = ["2001:4860:4860::8888", "2001:4860:4860::8844"]
+dot      = "dns.google"
+doh      = "https://dns.google/dns-query"
+tags     = ["dnssec", "ecs", "nofilter"]
+homepage = "https://developers.google.com/speed/public-dns"
+notes    = "ECS reference. Logs queries per its published policy."
+
+[[provider]]
+key      = "opendns"
+label    = "OpenDNS"
+udp4     = ["208.67.222.222", "208.67.220.220"]
+udp6     = ["2620:119:35::35", "2620:119:53::53"]
+dot      = "dns.opendns.com"
+doh      = "https://doh.opendns.com/dns-query"
+tags     = ["dnssec", "ecs"]
+homepage = "https://www.opendns.com/setupguide/"
+
+# ── DNS4EU ───────────────────────────────────────────────────────────────────
+# EU-anycast. Expect a large penalty outside Europe — that is a correct result and
+# a useful demonstration that the tool measures the user's actual path.
+[[provider]]
+key      = "dns4eu-protective"
+label    = "DNS4EU (protective)"
+udp4     = ["86.54.11.1"]
+dot      = "protective.joindns4.eu"
+doh      = "https://protective.joindns4.eu/dns-query"
+tags     = ["dnssec", "malware"]
+homepage = "https://www.joindns4.eu/for-public"

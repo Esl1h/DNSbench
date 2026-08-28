@@ -1,0 +1,484 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Esl1h/DNSbench/schema/result.schema.json",
+  "title": "dnsbench run result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "tool",
+    "run",
+    "network",
+    "datasets",
+    "results"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "tool": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "required": [
+        "started_at",
+        "duration_s",
+        "complete",
+        "rounds",
+        "profile",
+        "weights"
+      ],
+      "properties": {
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "duration_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "rounds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "profile": {
+          "type": "string"
+        },
+        "weights": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "required": [
+        "ipv6",
+        "region",
+        "region_source"
+      ],
+      "properties": {
+        "asn": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "asn_org": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "interface": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ipv6": {
+          "type": "boolean"
+        },
+        "region": {
+          "type": "string"
+        },
+        "region_source": {
+          "enum": [
+            "flag",
+            "config",
+            "rir",
+            "tz",
+            "default"
+          ]
+        },
+        "vpn_detected": {
+          "type": "boolean"
+        },
+        "dns_interception": {
+          "type": "boolean"
+        }
+      }
+    },
+    "datasets": {
+      "type": "object",
+      "required": [
+        "catalog",
+        "domains"
+      ],
+      "properties": {
+        "catalog": {
+          "type": "object",
+          "required": [
+            "source",
+            "version",
+            "providers"
+          ],
+          "properties": {
+            "source": {
+              "enum": [
+                "embedded",
+                "dnscrypt",
+                "user",
+                "merged"
+              ]
+            },
+            "version": {
+              "type": "integer"
+            },
+            "providers": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "domains": {
+          "type": "object",
+          "required": [
+            "warm",
+            "cold_mode"
+          ],
+          "properties": {
+            "warm": {
+              "type": "string",
+              "description": "pinned dataset id, e.g. tranco:K2XVW"
+            },
+            "regional": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "cold_mode": {
+              "enum": [
+                "own",
+                "wild",
+                "off"
+              ]
+            }
+          }
+        },
+        "cdn_hosts": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": "integer"
+            },
+            "stale": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/result"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    }
+  },
+  "$defs": {
+    "probe_stats": {
+      "type": "object",
+      "required": [
+        "n",
+        "expected",
+        "p50",
+        "p95",
+        "max",
+        "mean",
+        "jitter",
+        "loss"
+      ],
+      "properties": {
+        "n": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "p50": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "null when there was no sample to derive it from: n = 0 for all of these, and n = 1 for jitter. Never 0, which is a latency."
+        },
+        "p95": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "null when there was no sample to derive it from: n = 0 for all of these, and n = 1 for jitter. Never 0, which is a latency."
+        },
+        "max": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "null when there was no sample to derive it from: n = 0 for all of these, and n = 1 for jitter. Never 0, which is a latency."
+        },
+        "mean": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "null when there was no sample to derive it from: n = 0 for all of these, and n = 1 for jitter. Never 0, which is a latency."
+        },
+        "jitter": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "null when there was no sample to derive it from: n = 0 for all of these, and n = 1 for jitter. Never 0, which is a latency."
+        },
+        "loss": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "http_version": {
+          "enum": [
+            "1.1",
+            "2",
+            "3"
+          ],
+          "description": "DoH only; present because h1.1 is not comparable to browser h2"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "key",
+        "label",
+        "is_cache",
+        "probes"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "rank": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tier": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "score": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "is_cache": {
+          "type": "boolean"
+        },
+        "excluded": {
+          "enum": [
+            "cache",
+            "low_n",
+            "unreachable",
+            null
+          ]
+        },
+        "subscores": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "null when the provider had no measurement to derive this component from. It contributes 0 to the composite and renders as n/a; 0 here would read as a measured result."
+          }
+        },
+        "probes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/probe_stats"
+          }
+        },
+        "edge": {
+          "type": "object",
+          "properties": {
+            "median_penalty_ms": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "hosts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "host",
+                  "stale"
+                ],
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "answer": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "connect_ms": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "penalty_ms": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "stale": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "capabilities": {
+          "type": "object",
+          "description": "MEASURED. Never merge with `declared`.",
+          "properties": {
+            "dnssec_validating": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "filtering": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "boolean"
+              }
+            },
+            "transports": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "udp",
+                  "tcp",
+                  "dot",
+                  "doh"
+                ]
+              }
+            },
+            "ipv6": {
+              "type": "boolean"
+            }
+          }
+        },
+        "declared": {
+          "type": "array",
+          "description": "DECLARED by the provider. Not verified by this tool.",
+          "items": {
+            "enum": [
+              "nolog",
+              "nofilter",
+              "audited",
+              "nonprofit",
+              "configurable"
+            ]
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        },
+        "score_ci": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "description": "Bootstrap confidence interval on the composite score, low and high. Providers whose intervals overlap share a tier; this is what makes that decision checkable from the output alone."
+        }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "required": [
+        "level",
+        "message"
+      ],
+      "properties": {
+        "level": {
+          "enum": [
+            "info",
+            "warn",
+            "error"
+          ]
+        },
+        "key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
