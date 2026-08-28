@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install V
+        run: |
+          git clone --depth=1 https://github.com/vlang/v /tmp/v
+          make -C /tmp/v
+          echo "/tmp/v" >> "$GITHUB_PATH"
+
+      - name: Format check
+        run: v fmt -verify .
+
+      - name: Vet
+        run: v vet .
+
+      - name: Build
+        run: v -prod -o dnsbench cmd/cli.v
+
+      - name: Test
+        run: v test .
+
+      - name: Validate golden JSON against schema
+        run: |
+          pip install --quiet check-jsonschema
+          make schema
+
+# CI must never generate traffic to third-party resolvers.
+# Integration tests run against a local mock authoritative server.

@@ -1,0 +1,14 @@
+# bootstrap material: read by Claude Code, never committed, deleted after M0
+.bootstrap/
+
+dnsbench
+*.o
+*.tmp.c
+.*.v3cc.*/
+/tmp/
+*.log
+*.csv
+*.jsonl
+
+# golden files and captured byte vectors are tracked
+!testdata/**
