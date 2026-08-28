@@ -1,0 +1,39 @@
+{
+  "_source": "docs/SCORING.md, Worked example. If this file and that section disagree, one of them is a bug and the test says which.",
+  "profile": "balanced",
+  "bests": {
+    "p50": 14.2,
+    "cold": 28.0,
+    "p95": 21.7,
+    "jitter": 2.4,
+    "rtt": 11.2,
+    "dot_warm": 16.1
+  },
+  "provider": {
+    "key": "example-x",
+    "warm_n": 40,
+    "warm_p50": 15.0,
+    "warm_p95": 24.8,
+    "warm_jitter": 3.1,
+    "warm_loss": 0.0,
+    "cold_p50": 31.0,
+    "dot_warm_p50": 17.0,
+    "ecs_penalty_ms": 3.9,
+    "dnssec_validating": true,
+    "offers_dot": true,
+    "offers_doh": true,
+    "offers_ipv6": true,
+    "declared": ["nolog", "nofilter"]
+  },
+  "expected": {
+    "latency": 94.7,
+    "recursion": 90.3,
+    "stability": 83.5,
+    "reliability": 100.0,
+    "edge": 74.2,
+    "encrypted": 94.7,
+    "capability": 100.0,
+    "privacy": 70.0,
+    "score": 87.3
+  }
+}
