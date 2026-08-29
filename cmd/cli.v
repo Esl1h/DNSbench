@@ -187,6 +187,9 @@ struct Subject {
 mut:
 	samples map[string][]f64
 	failed  map[string]int
+	// Attempts the resolver answered with a non-NOERROR rcode, held apart from
+	// `failed`: one is a resolver declining, the other is nothing coming back.
+	refused map[string]int
 }
 
 fn run(opts Options) !store.RunResult {
@@ -381,7 +384,7 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options) ! {
 			time.sleep(send_at - now)
 		}
 
-		ms := query_once(step, target, opts.cold_zone, mut udp, mut tcp) or {
+		out := query_once(step, target, opts.cold_zone, mut udp, mut tcp) or {
 			if !step.discard {
 				subjects[idx].failed[step.probe]++
 			}
@@ -390,13 +393,29 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options) ! {
 
 		// The warm-up query is sent like any other and its result thrown away:
 		// it paid for cache fill, ARP and route setup that no later query pays.
-		if !step.discard {
-			subjects[idx].samples[step.probe] << ms
+		if step.discard {
+			continue
 		}
+		if out.code != core.rcode_noerror {
+			// An answer, and not a measurement. It is not a sample and it is
+			// not a dropped packet either.
+			subjects[idx].refused[step.probe]++
+			continue
+		}
+		subjects[idx].samples[step.probe] << out.ms
 	}
 }
 
-fn query_once(step core.Step, target core.Target, cold_zone string, mut udp map[string]&core.UdpTransport, mut tcp map[string]&core.TcpTransport) !f64 {
+// Outcome is one completed exchange: a latency and the rcode that came with
+// it. The rcode is returned rather than folded into an error because a resolver
+// that answers REFUSED has answered, and the caller is the only place that
+// knows the difference matters.
+struct Outcome {
+	ms   f64
+	code int
+}
+
+fn query_once(step core.Step, target core.Target, cold_zone string, mut udp map[string]&core.UdpTransport, mut tcp map[string]&core.TcpTransport) !Outcome {
 	msg := core.build_query(query_name(step, cold_zone), core.qtype_a)!
 
 	if step.probe == 'tcp' {
@@ -410,7 +429,10 @@ fn query_once(step core.Step, target core.Target, cold_zone string, mut udp map[
 		}
 		mut t := tcp[step.provider_key] or { return error('no tcp transport') }
 		reply, ms := t.query(msg)!
-		return checked(reply, ms)
+		return Outcome{
+			ms: ms
+			code: core.rcode(reply)
+		}
 	}
 
 	if step.provider_key !in udp {
@@ -420,7 +442,10 @@ fn query_once(step core.Step, target core.Target, cold_zone string, mut udp map[
 	}
 	mut t := udp[step.provider_key] or { return error('no udp transport') }
 	reply, ms := t.query(msg)!
-	return checked(reply, ms)
+	return Outcome{
+		ms: ms
+		code: core.rcode(reply)
+	}
 }
 
 // query_name is the name actually asked.
@@ -447,14 +472,6 @@ fn query_name(step core.Step, cold_zone string) string {
 // A resolver that refuses fast is not a fast resolver. Counting a SERVFAIL as a
 // latency sample would let a provider that answers nothing useful outrank one
 // that answers correctly.
-fn checked(reply []u8, ms f64) !f64 {
-	code := core.rcode(reply)
-	if code != core.rcode_noerror {
-		return error('rcode ${code}')
-	}
-	return ms
-}
-
 fn assemble(subjects []Subject, probes []string, opts Options, net core.NetInfo, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning) store.RunResult {
 	weights := core.profiles[opts.profile] or { core.Weights{} }
 	expected := core.expected_samples(opts.rounds, warm_domains.len)
@@ -474,6 +491,9 @@ fn assemble(subjects []Subject, probes []string, opts Options, net core.NetInfo,
 			warm_expected: if 'warm' in probes { expected } else { 0 }
 			cold_expected: if 'cold' in probes { expected } else { 0 }
 			dot_warm_expected: 0
+			warm_refused: s.refused['warm'] or { 0 }
+			cold_refused: s.refused['cold'] or { 0 }
+			dot_warm_refused: 0
 		}
 	}
 
@@ -500,7 +520,7 @@ fn assemble(subjects []Subject, probes []string, opts Options, net core.NetInfo,
 		for name in probes {
 			reports << store.ProbeReport{
 				name: name
-				stats: core.compute(subject.samples[name] or { []f64{} }, expected)
+				stats: core.compute_counted(subject.samples[name] or { []f64{} }, expected, subject.refused[name] or { 0 })
 			}
 		}
 
@@ -587,9 +607,9 @@ fn metrics_from(samples []core.Samples) []core.Metrics {
 		out << core.Metrics{
 			key: s.base.key
 			is_cache: s.base.is_cache
-			warm: core.compute(s.warm_ms, s.warm_expected)
-			cold: core.compute(s.cold_ms, s.cold_expected)
-			dot_warm: core.compute(s.dot_warm_ms, s.dot_warm_expected)
+			warm: core.compute_counted(s.warm_ms, s.warm_expected, s.warm_refused)
+			cold: core.compute_counted(s.cold_ms, s.cold_expected, s.cold_refused)
+			dot_warm: core.compute_counted(s.dot_warm_ms, s.dot_warm_expected, s.dot_warm_refused)
 			ecs_penalty_ms: s.base.ecs_penalty_ms
 			dnssec_validating: s.base.dnssec_validating
 			offers_dot: s.base.offers_dot

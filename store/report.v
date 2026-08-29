@@ -325,6 +325,7 @@ fn probe_json(p ProbeReport) json2.Any {
 	mut m := map[string]json2.Any{}
 	m['n'] = p.stats.n
 	m['expected'] = p.stats.expected
+	m['refused'] = p.stats.refused
 	// Null, never 0: a probe with no sample has no median, and 0 is the best
 	// latency on the page. docs/METHODOLOGY.md § Nothing is not zero.
 	m['p50'] = opt_any(p.stats.p50)
@@ -369,12 +370,14 @@ fn round1(v f64) f64 {
 // will not install jq. An absent figure is an empty field, which is what a
 // spreadsheet reads as no data rather than as zero.
 pub fn (r RunResult) to_csv() string {
-	mut out := ['provider,probe,n,expected,p50,p95,max,jitter,loss,edge_penalty,score']
+	mut out := [
+		'provider,probe,n,expected,refused,p50,p95,max,jitter,loss,edge_penalty,score',
+	]
 	for p in r.results {
 		score := if p.ranked.excluded != none { '' } else { fmt1(p.ranked.score) }
 		penalty := csv_opt(p.edge.median_penalty_ms)
 		for probe in p.probes {
-			out << '${p.key},${probe.name},${probe.stats.n},${probe.stats.expected},' + '${csv_opt(probe.stats.p50)},${csv_opt(probe.stats.p95)},${csv_opt(probe.stats.max)},' + '${csv_opt(probe.stats.jitter)},${fmt1(probe.stats.loss)},${penalty},${score}'
+			out << '${p.key},${probe.name},${probe.stats.n},${probe.stats.expected},' + '${probe.stats.refused},${csv_opt(probe.stats.p50)},${csv_opt(probe.stats.p95)},${csv_opt(probe.stats.max)},' + '${csv_opt(probe.stats.jitter)},${fmt1(probe.stats.loss)},${penalty},${score}'
 		}
 	}
 	return out.join('\n') + '\n'
@@ -430,7 +433,11 @@ pub fn exit_code(r RunResult) int {
 		return exit_measurement_error
 	}
 	for p in r.results {
-		if p.ranked.excluded or { core.Exclusion.cache } == .unreachable {
+		// Refused joins unreachable here: the provider answered, so the run is
+		// not a total loss, but nothing was measured for it and a caller that
+		// checks only the exit code has to learn that.
+		reason := p.ranked.excluded or { continue }
+		if reason == .unreachable || reason == .refused {
 			return exit_measurement_error
 		}
 	}

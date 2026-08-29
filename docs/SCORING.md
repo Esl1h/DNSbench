@@ -121,7 +121,7 @@ weights, so a typo produces a visible wrong header rather than a silently wrong 
 |---|---|
 | Local cache (`is_cache: true`) | Excluded from `latency` ranking; included in `recursion` |
 | `n < 30` on any scored probe | `low-n` marker, no tier assignment |
-| `loss == 100` | Score `—`, sorted last, reason shown |
+| `n == 0` on the scored probe | Score `—`, sorted last, reason shown: `unreachable` when nothing came back, `refused` when every answer carried a non-NOERROR rcode |
 | Provider missing a scored probe | Subscore = 0 for that component, marked `n/a` in detail view |
 | Source metric is `null` | Same treatment. A probe with no sample has no p50, so there is nothing to divide by; see METHODOLOGY § Nothing is not zero |
 

@@ -263,7 +263,7 @@ fn test_the_golden_file_matches_what_the_emitter_produces() ! {
 fn test_the_csv_has_one_row_per_provider_and_probe() ! {
 	rows := sample_run().to_csv().trim_space().split('\n')
 
-	assert rows[0] == 'provider,probe,n,expected,p50,p95,max,jitter,loss,edge_penalty,score'
+	assert rows[0] == 'provider,probe,n,expected,refused,p50,p95,max,jitter,loss,edge_penalty,score'
 	// two probes for cloudflare, one for the unreachable provider
 	assert rows.len == 4
 	assert rows[1].starts_with('cloudflare,warm,5,5,')
@@ -274,14 +274,15 @@ fn test_the_csv_leaves_an_absent_figure_empty_rather_than_zero() ! {
 	rows := sample_run().to_csv().trim_space().split('\n')
 	dead := rows[3].split(',')
 
-	// provider,probe,n,expected,p50,p95,max,jitter,loss,edge_penalty,score
-	assert dead[4] == ''
+	// provider,probe,n,expected,refused,p50,p95,max,jitter,loss,edge_penalty,score
+	assert dead[4] == '0'
 	assert dead[5] == ''
 	assert dead[6] == ''
 	assert dead[7] == ''
-	assert dead[8] == '100.0'
+	assert dead[8] == ''
+	assert dead[9] == '100.0'
 	// No score: the provider is excluded from the ranking.
-	assert dead[10] == ''
+	assert dead[11] == ''
 }
 
 // ── history ──────────────────────────────────────────────────────────────────
@@ -466,4 +467,38 @@ fn test_a_cache_or_a_low_n_row_does_not_make_the_run_an_error() {
 	}
 
 	assert exit_code(fine) == exit_ok
+}
+
+fn test_a_refusing_provider_is_reachable_but_still_an_error() {
+	// Mullvad's plaintext addresses answer REFUSED to every name by design.
+	// Calling that unreachable blames the network for a decision the operator
+	// made, and would send the run to exit 3, which tells a monitoring job it
+	// has no connectivity. It has connectivity; it has no measurement.
+	refusing := RunResult{
+		run: Run{
+			complete: true
+		}
+		results: [
+			ProviderResult{
+				key: 'mullvad'
+				ranked: core.Ranked{
+					excluded: core.Exclusion.refused
+				}
+				probes: [
+					ProbeReport{
+						name: 'warm'
+						stats: core.compute_counted([]f64{}, 40, 40)
+					},
+				]
+			},
+		]
+	}
+
+	assert exit_code(refusing) == exit_measurement_error
+
+	row := refusing.to_csv().trim_space().split('\n')[1].split(',')
+	// provider,probe,n,expected,refused,p50,...,loss
+	assert row[2] == '0'
+	assert row[4] == '40'
+	assert row[9] == '0.0'
 }

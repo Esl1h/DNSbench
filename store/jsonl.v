@@ -26,11 +26,12 @@ pub:
 	provider string
 	probe    string
 
-	n      int
-	p50    ?f64
-	p95    ?f64
-	jitter ?f64
-	loss   f64
+	n       int
+	refused int
+	p50     ?f64
+	p95     ?f64
+	jitter  ?f64
+	loss    f64
 
 	edge_penalty ?f64
 	score        ?f64
@@ -60,6 +61,7 @@ pub fn (r RunResult) lines() []Line {
 				provider: p.key
 				probe: probe.name
 				n: probe.stats.n
+				refused: probe.stats.refused
 				p50: probe.stats.p50
 				p95: probe.stats.p95
 				jitter: probe.stats.jitter
@@ -101,6 +103,7 @@ pub fn (l Line) encode() string {
 	m['provider'] = l.provider
 	m['probe'] = l.probe
 	m['n'] = l.n
+	m['refused'] = l.refused
 	m['p50'] = opt_any(l.p50)
 	m['p95'] = opt_any(l.p95)
 	m['jitter'] = opt_any(l.jitter)
@@ -175,6 +178,7 @@ pub fn parse_line(text string) !Line {
 		provider: str_of(m, 'provider')
 		probe: str_of(m, 'probe')
 		n: m['n'] or { json2.Any(0) }.int()
+		refused: m['refused'] or { json2.Any(0) }.int()
 		p50: f64_of(m, 'p50')
 		p95: f64_of(m, 'p95')
 		jitter: f64_of(m, 'jitter')

@@ -396,12 +396,21 @@ fn test_exclusion_reasons() {
 		}
 	}
 	assert exclusion_for(thin)? == .low_n
+
+	// Answered every query, resolved none of them. Reporting this as
+	// unreachable blames the network for a decision the operator made.
+	refusing := Metrics{
+		warm: compute_counted([]f64{}, 40, 40)
+	}
+	assert exclusion_for(refusing)? == .refused
 }
 
 fn test_exclusion_strings_match_the_output_contract() {
 	// docs/OUTPUT.md: `excluded` is null, or one of "cache", "low_n",
-	// "unreachable". These strings are the contract, not a display choice.
+	// "unreachable", "refused". These strings are the contract, not a display
+	// choice.
 	assert Exclusion.cache.str() == 'cache'
 	assert Exclusion.low_n.str() == 'low_n'
 	assert Exclusion.unreachable.str() == 'unreachable'
+	assert Exclusion.refused.str() == 'refused'
 }

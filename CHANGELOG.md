@@ -10,6 +10,9 @@ comparability and `history` must be able to detect it.
 ## [Unreleased]
 
 ### Added
+- `refused` on every probe's stats, in JSON, CSV and the history lines: attempts the resolver
+  answered with a non-NOERROR rcode. They produce no latency, so they never reach `n`
+- `excluded: "refused"`, for a provider that answered every query and resolved none of them
 - Project documentation and specification (ARCHITECTURE, METHODOLOGY, SCORING, TUI, DATA, OUTPUT)
 - Curated provider catalog, 16 entries, endpoints verified 2026-08-28
 - Domain sets pinned to `tranco:K2XVW` retrieved 2026-08-15
@@ -85,6 +88,12 @@ comparability and `history` must be able to detect it.
   the link cannot carry
 
 ### Changed
+- `loss` now counts only attempts that drew no answer at all. A REFUSED, SERVFAIL or NXDOMAIN
+  reply used to be counted as a lost packet, which reported a resolver that answered every
+  query in 380 ms as 100% loss and unreachable, blaming the network for a decision the
+  operator had made. A provider can now show `loss` of 0.0 and still be excluded
+- The CSV gains a `refused` column after `expected`, and the history lines a `refused` key.
+  Both are contract changes: a consumer reading the CSV by column index has to be updated
 - Catalog `version` 3 to 4, `generated` 2026-08-29. Removing Mullvad's plaintext endpoints
   changes which providers a plaintext run covers, so runs across the bump are not comparable
   and `history` must treat them as separate populations

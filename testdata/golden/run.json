@@ -75,6 +75,7 @@
                 "warm": {
                     "n": 5,
                     "expected": 5,
+                    "refused": 0,
                     "p50": 14.4,
                     "p95": 21.7,
                     "max": 21.7,
@@ -85,6 +86,7 @@
                 "doh": {
                     "n": 5,
                     "expected": 5,
+                    "refused": 0,
                     "p50": 103,
                     "p95": 117.7,
                     "max": 117.7,
@@ -157,6 +159,7 @@
                     "warm": {
                         "n": 0,
                         "expected": 40,
+                        "refused": 0,
                         "p50": null,
                         "p95": null,
                         "max": null,

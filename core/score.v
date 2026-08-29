@@ -30,6 +30,10 @@ pub enum Exclusion {
 	low_n
 	// Nothing answered at all.
 	unreachable
+	// Every attempt was answered, and every answer carried a non-NOERROR
+	// rcode. The resolver is reachable and is declining to resolve, which is
+	// a different fact from silence and belongs to a different owner.
+	refused
 }
 
 // str is the wire form from docs/OUTPUT.md. These strings are the contract a
@@ -39,6 +43,7 @@ pub fn (e Exclusion) str() string {
 		.cache { 'cache' }
 		.low_n { 'low_n' }
 		.unreachable { 'unreachable' }
+		.refused { 'refused' }
 	}
 }
 
@@ -250,6 +255,11 @@ pub fn exclusion_for(m Metrics) ?Exclusion {
 		return .cache
 	}
 	if m.warm.n == 0 {
+		// Refused before unreachable: a resolver that answered every query is
+		// not silent, whatever else it is.
+		if m.warm.refused > 0 {
+			return .refused
+		}
 		return .unreachable
 	}
 	if m.warm.n < min_ranked_samples {

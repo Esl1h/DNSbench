@@ -55,15 +55,15 @@ Three formats, one guarantee: **anything that consumes `--json` will keep workin
         "edge": 74.2, "encrypted": 94.7, "capability": 100.0, "privacy": 70.0
       },
       "probes": {
-        "warm":      { "n": 40, "expected": 40, "p50": 15.0, "p95": 24.8, "max": 32.8,
+        "warm":      { "n": 40, "expected": 40, "refused": 0, "p50": 15.0, "p95": 24.8, "max": 32.8,
                        "mean": 16.2, "jitter": 3.1, "loss": 0.0 },
-        "cold":      { "n": 40, "expected": 40, "p50": 31.0, "p95": 44.2, "max": 51.0,
+        "cold":      { "n": 40, "expected": 40, "refused": 0, "p50": 31.0, "p95": 44.2, "max": 51.0,
                        "mean": 33.1, "jitter": 6.0, "loss": 0.0 },
-        "dot_fresh": { "n": 40, "expected": 40, "p50": 101.4, "p95": 119.9, "max": 139.7,
+        "dot_fresh": { "n": 40, "expected": 40, "refused": 0, "p50": 101.4, "p95": 119.9, "max": 139.7,
                        "mean": 102.4, "jitter": 9.8, "loss": 0.0 },
-        "dot_warm":  { "n": 40, "expected": 40, "p50": 17.0, "p95": 25.9, "max": 30.1,
+        "dot_warm":  { "n": 40, "expected": 40, "refused": 0, "p50": 17.0, "p95": 25.9, "max": 30.1,
                        "mean": 18.1, "jitter": 3.4, "loss": 0.0 },
-        "doh":       { "n": 40, "expected": 40, "p50": 100.9, "p95": 117.7, "max": 129.6,
+        "doh":       { "n": 40, "expected": 40, "refused": 0, "p50": 100.9, "p95": 117.7, "max": 129.6,
                        "mean": 101.8, "jitter": 8.9, "loss": 0.0,
                        "http_version": "1.1" }
       },
@@ -97,8 +97,16 @@ Three formats, one guarantee: **anything that consumes `--json` will keep workin
 
 - `declared` is separate from `capabilities` by design. `capabilities` is measured;
   `declared` is what the provider says. Consumers must not merge them.
-- `excluded` is `null`, or one of `"cache"`, `"low_n"`, `"unreachable"`, with the reason
-  visible rather than the row silently absent.
+- `excluded` is `null`, or one of `"cache"`, `"low_n"`, `"unreachable"`, `"refused"`, with
+  the reason visible rather than the row silently absent. `"refused"` and `"unreachable"`
+  are not the same fact: a resolver that answers REFUSED, SERVFAIL or NXDOMAIN to every
+  query has answered, and calling that silence blames the network for a decision the
+  operator made.
+- `refused` counts attempts the resolver answered with a non-NOERROR rcode. They produce no
+  latency, so they never reach `n`, and they are not `loss`, which counts only attempts
+  that drew no answer at all. A provider can therefore show `loss` of 0.0 and still be
+  excluded, which is the honest reading of a server that replies to everything and
+  resolves nothing.
 - `mean` exists in JSON and appears in no human-facing output. See METHODOLOGY.
 - `p50`, `p95`, `max`, `mean` and `jitter` are `null` when there was no sample to derive them
   from: all five when `n` is 0, and `jitter` also when `n` is 1, where the sample standard
@@ -133,9 +141,10 @@ every golden file in `testdata/`.
 
 ```json
 {"ts":"2026-08-28T09:14:02-03:00","asn":"AS27699","ifname":"wlan0","ipv6":false,
- "provider":"quad9-ecs","probe":"warm","n":40,"p50":16.9,"p95":68.1,"jitter":14.2,
+ "provider":"quad9-ecs","probe":"warm","n":40,"refused":0,"p50":16.9,"p95":68.1,
+ "jitter":14.2,
  "loss":0.0,"edge_penalty":11.4,"score":58.7,"profile":"balanced",
- "catalog_version":3,"domains":"tranco:K2XVW+sa","cold_mode":"own","tool":"0.1.0"}
+ "catalog_version":4,"domains":"tranco:K2XVW+sa","cold_mode":"own","tool":"0.1.0"}
 ```
 
 **Not SQLite**, deliberately. V's `db.sqlite` requires `sqlite3.h` at build time, which means
@@ -167,8 +176,8 @@ Flat, one row per (provider, probe). For spreadsheets and for people who will no
 `jq`. Same numbers, no nesting, header row included.
 
 ```
-provider,probe,n,expected,p50,p95,max,jitter,loss,edge_penalty,score
-nextdns,warm,40,40,15.0,24.8,32.8,3.1,0.0,3.9,92.4
+provider,probe,n,expected,refused,p50,p95,max,jitter,loss,edge_penalty,score
+nextdns,warm,40,40,0,15.0,24.8,32.8,3.1,0.0,3.9,92.4
 ```
 
 ## `--format markdown`

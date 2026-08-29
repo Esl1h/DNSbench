@@ -188,3 +188,57 @@ fn test_expected_below_n_cannot_produce_negative_loss() {
 	assert s.n == 2
 	assert s.loss == 0.0
 }
+
+fn test_a_refused_answer_is_not_a_dropped_packet() {
+	// Ten attempts, four resolved, six answered with a non-NOERROR rcode and
+	// nothing lost. Loss is 0 because every query drew a reply; the six are
+	// counted where they belong instead of being blamed on the network. This is
+	// the Mullvad case: plaintext addresses that answer REFUSED by design came
+	// out of a run reported as 100% loss and unreachable.
+	s := compute_counted([10.0, 20.0, 30.0, 40.0], 10, 6)
+
+	assert s.n == 4
+	assert s.refused == 6
+	assert s.expected == 10
+	assert s.loss == 0.0
+	assert s.p50? == 20.0
+}
+
+fn test_loss_counts_only_the_attempts_that_drew_no_answer() {
+	// Ten attempts: four resolved, three refused, three lost. Loss is 3/10 and
+	// not 6/10, because a refusal came back.
+	s := compute_counted([10.0, 20.0, 30.0, 40.0], 10, 3)
+
+	assert s.n == 4
+	assert s.refused == 3
+	assert s.loss == 30.0
+}
+
+fn test_a_provider_that_only_refuses_has_no_latency_at_all() {
+	// Every attempt answered, none of them usable. The five latency figures are
+	// absent rather than zero, on the same terms as any other empty sample, and
+	// loss stays 0 because nothing was dropped.
+	s := compute_counted([]f64{}, 40, 40)
+
+	assert s.n == 0
+	assert s.refused == 40
+	assert s.loss == 0.0
+	if v := s.p50 {
+		assert false, 'expected none, got ${v}'
+	}
+	if v := s.jitter {
+		assert false, 'expected none, got ${v}'
+	}
+}
+
+fn test_compute_is_compute_counted_with_nothing_refused() {
+	// The two-argument form is what every probe that cannot tell a refusal from
+	// a silence still uses, and it must not change any number it produced
+	// before the third argument existed.
+	a := compute([10.0, 20.0], 4)
+	b := compute_counted([10.0, 20.0], 4, 0)
+
+	assert a == b
+	assert a.refused == 0
+	assert a.loss == 50.0
+}

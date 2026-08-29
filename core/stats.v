@@ -26,12 +26,13 @@ pub struct Stats {
 pub:
 	n        int // successful samples
 	expected int // samples attempted
+	refused  int // attempts the resolver answered with a non-NOERROR rcode
 	p50      ?f64 // ms, nearest-rank
 	p95      ?f64 // ms, nearest-rank
 	max      ?f64 // ms, largest successful sample
 	mean     ?f64 // ms; reaches JSON only, never a human-facing headline
 	jitter   ?f64 // ms, sample standard deviation, n-1 denominator
-	loss     f64 // percent in [0, 100], matching schema/result.schema.json
+	loss     f64 // percent in [0, 100] that drew no answer at all, matching schema/result.schema.json
 }
 
 // percentile returns the nearest-rank percentile of an ascending-sorted sample,
@@ -72,19 +73,35 @@ pub fn percentile(sorted_ms []f64, p f64) ?f64 {
 // The first sample per (provider, probe) is discarded by the scheduler, not
 // here, and must be excluded from `expected` as well.
 pub fn compute(latencies_ms []f64, expected int) Stats {
+	return compute_counted(latencies_ms, expected, 0)
+}
+
+// compute_counted is compute for a probe that can tell a refusal from a
+// silence.
+//
+// A resolver that answers REFUSED, SERVFAIL or NXDOMAIN has answered: the
+// packet went out and one came back. Counting that as loss says the network
+// dropped it, which is a different fault with a different owner, and it was
+// how Mullvad, whose plaintext addresses refuse every name by design, came out
+// of a run reported as unreachable. Refused attempts leave `loss` alone and are
+// counted on their own; they still produce no latency, so they never reach `n`.
+pub fn compute_counted(latencies_ms []f64, expected int, refused int) Stats {
 	n := latencies_ms.len
 
-	// An `expected` below `n` is a caller error; clamping to zero keeps a bad
-	// count from producing a negative loss that would flatter the provider.
+	// An `expected` below `n + refused` is a caller error; clamping to zero
+	// keeps a bad count from producing a negative loss that would flatter the
+	// provider.
 	mut loss := 0.0
-	if expected > n {
-		loss = 100.0 * f64(expected - n) / f64(expected)
+	unanswered := expected - n - refused
+	if unanswered > 0 {
+		loss = 100.0 * f64(unanswered) / f64(expected)
 	}
 
 	if n == 0 {
 		return Stats{
 			n: 0
 			expected: expected
+			refused: refused
 			loss: loss
 		}
 	}
@@ -114,6 +131,7 @@ pub fn compute(latencies_ms []f64, expected int) Stats {
 	return Stats{
 		n: n
 		expected: expected
+		refused: refused
 		p50: percentile(sorted, 50)
 		p95: percentile(sorted, 95)
 		max: sorted[n - 1]

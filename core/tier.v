@@ -38,6 +38,12 @@ pub:
 	warm_expected     int
 	cold_expected     int
 	dot_warm_expected int
+	// Attempts answered with a non-NOERROR rcode. Held apart from the attempt
+	// counts so that a refusal never reads as a dropped packet, and carried
+	// through resampling untouched: a replicate redraws latencies, not verdicts.
+	warm_refused     int
+	cold_refused     int
+	dot_warm_refused int
 }
 
 pub struct BootstrapSpec {
@@ -183,7 +189,7 @@ fn overlaps(a Interval, b Interval) bool {
 fn metrics_of(all []Samples) []Metrics {
 	mut out := []Metrics{cap: all.len}
 	for s in all {
-		out << with_stats(s, compute(s.warm_ms, s.warm_expected), compute(s.cold_ms, s.cold_expected), compute(s.dot_warm_ms, s.dot_warm_expected))
+		out << with_stats(s, compute_counted(s.warm_ms, s.warm_expected, s.warm_refused), compute_counted(s.cold_ms, s.cold_expected, s.cold_refused), compute_counted(s.dot_warm_ms, s.dot_warm_expected, s.dot_warm_refused))
 	}
 	return out
 }
@@ -225,7 +231,7 @@ fn bootstrap_intervals(all []Samples, best_rtt ?f64, w Weights, spec BootstrapSp
 	for _ in 0 .. spec.resamples {
 		mut replicate := []Metrics{cap: all.len}
 		for s in all {
-			replicate << with_stats(s, compute(resample(mut rng, s.warm_ms)!, s.warm_expected), compute(resample(mut rng, s.cold_ms)!, s.cold_expected), compute(resample(mut rng, s.dot_warm_ms)!, s.dot_warm_expected))
+			replicate << with_stats(s, compute_counted(resample(mut rng, s.warm_ms)!, s.warm_expected, s.warm_refused), compute_counted(resample(mut rng, s.cold_ms)!, s.cold_expected, s.cold_refused), compute_counted(resample(mut rng, s.dot_warm_ms)!, s.dot_warm_expected, s.dot_warm_refused))
 		}
 
 		bests := compute_bests(replicate, best_rtt)

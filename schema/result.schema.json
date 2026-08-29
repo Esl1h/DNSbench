@@ -213,6 +213,7 @@
       "required": [
         "n",
         "expected",
+        "refused",
         "p50",
         "p95",
         "max",
@@ -228,6 +229,11 @@
         "expected": {
           "type": "integer",
           "minimum": 0
+        },
+        "refused": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "attempts the resolver answered with a non-NOERROR rcode. They produce no latency, so they never reach n, and they are not loss: a packet came back."
         },
         "p50": {
           "type": [
@@ -267,7 +273,8 @@
         "loss": {
           "type": "number",
           "minimum": 0,
-          "maximum": 100
+          "maximum": 100,
+          "description": "percent of attempts that drew no answer at all. A refused answer is counted in refused, not here."
         },
         "http_version": {
           "enum": [
@@ -320,6 +327,7 @@
             "cache",
             "low_n",
             "unreachable",
+            "refused",
             null
           ]
         },
