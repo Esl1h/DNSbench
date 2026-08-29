@@ -57,33 +57,67 @@ operator, and how it was chosen.
 
 ## Where this stands
 
-Phases 0 to 3 are done. `make check` is clean: `v fmt -verify`, `v vet`, ten test files with
-roughly 1670 assertions, and the golden run result validating against
-`schema/result.schema.json`.
+Phases 0 to 4 are done, which is M0 through M2. Every probe the milestone list names exists.
+`make check` is clean: `v fmt -verify`, `v vet`, fourteen test files, and the golden run
+result validating against `schema/result.schema.json`.
 
 | Module | What it does |
 |---|---|
-| `core/wire.v` | RFC 1035 encode and decode, EDNS0, compression pointers with a real cycle guard |
-| `core/stats.v` | Percentiles by nearest rank, jitter, loss. Absent figures are absent, never 0 |
-| `core/transport.v` | The `Transport` interface, UDP and TCP. IP literals only, id-checked replies |
+| `core/wire.v` | RFC 1035 encode and decode, EDNS0, compression pointers with a real cycle guard. `a_addresses` and `cname_targets` for the probes that read an answer's shape |
+| `core/stats.v` | Percentiles by nearest rank, jitter, loss, refusals. Absent figures are absent, never 0 |
+| `core/transport.v` | The `Transport` interface, UDP and TCP, plus `connect_ms` for the edge probe |
+| `core/tls.v` | DoT per RFC 7858, the CA bundle cascade, and `dial_tls`, which both encrypted transports go through |
+| `core/doh.v` | DoH per RFC 8484, HTTP/1.1 written by hand over TLS |
+| `core/edge.v` | The ECS probe's arithmetic: per-host penalties against the run's own floor, the median, the misrouted count |
+| `core/capability.v` | The `dnssec` verdict with its CD control, the `filter` reading, majority over repeated readings |
 | `core/netinfo.v` | Resolvers, gateway, cache marking, tunnel detection, IPv6 availability |
-| `core/schedule.v` | Interleaved rounds, per-round shuffle, discarded warm-up pass, 10 qps pacing |
-| `core/score.v` | The eight subscores, the five profiles, run-relative normalisation |
+| `core/schedule.v` | Interleaved rounds, per-round shuffle, discarded warm-up pass, 10 qps pacing, per-provider probe lists |
+| `core/score.v` | The eight subscores, the five profiles, run-relative normalisation, five exclusion reasons |
 | `core/tier.v` | Bootstrap intervals on the composite score, tier and rank assignment |
-| `catalog/` | The embedded catalog, measured and declared tags held apart by the type |
+| `catalog/` | The embedded catalog, measured and declared tags held apart by the type, CDN hosts, DoT and DoH endpoints |
 | `store/report.v` | JSON, CSV, table, markdown, exit codes |
 | `store/jsonl.v` | Append-only history with the network fingerprint on every line |
 | `cmd/cli.v` | All of the above, wired |
 
-A run today:
+A full run today:
 
 ```sh
 make build
-./dnsbench --force --rounds 5 --only cloudflare,google,quad9,quad9-ecs,adguard,opendns
+./dnsbench --probes warm,cold,ecs,dot-fresh,dot-warm,doh,dnssec,filter \
+           --cold-zone probe.dnsbench.esli.blog
 ```
 
-`--force` is needed wherever a tunnel interface is up, which the development machine's normally
-is. Without it the run refuses and says why, per METHODOLOGY § Fail loudly on interference.
+`--force` is needed wherever a tunnel interface is up. Without it the run refuses and says why,
+per METHODOLOGY § Fail loudly on interference.
+
+### What the probes found, and what that cost
+
+Worth keeping, because each of these was a bug or a specification gap that a number alone would
+have hidden.
+
+`cold` is live against the project's own zone. Cloudflare came sixth on it, which is the
+evidence that hosting on Bunny DNS gave no resolver in the catalog a home-field advantage.
+
+`ecs` reproduces the published regional finding: Control D and DNS4EU pay more than 200 ms on
+Akamai and Fastly from São Paulo and nothing on the anycast hosts. Its first host set was half
+anycast, which cannot express an ECS decision at all, and the median flipped between 192 ms and
+1.4 ms across runs. Nine DNS-steered hosts across four CDN families fixed it, and the misrouted
+count is published beside the median because the count does not flip.
+
+`dot-fresh` against `dot-warm` is 4x to 12x on every provider measured. That gap is the reason
+both exist.
+
+`doh` cannot measure Quad9 or Mullvad: both serve DoH over HTTP/2 only, confirmed with
+`curl --http1.1` against `curl --http2`, and V has no h2 client. The 505 is recorded as
+`refused` with a warning, never as loss.
+
+`dnssec` needs its CD control and three readings. Quad9's `9.9.9.10`, documented by its
+operator as not validating, validates. AdGuard's fleet answers inconsistently enough that a
+single reading is a coin flip, so it reports unknown rather than guessing.
+
+`filter` probes `ads` only. The obvious test names all failed: `ads.doubleclick.net` is
+NXDOMAIN even on resolvers that filter nothing, and the OpenDNS test domains resolve to the
+same block page from every resolver.
 
 ### Outstanding, smaller than a phase
 
@@ -92,17 +126,34 @@ is. Without it the run refuses and says why, per METHODOLOGY § Fail loudly on i
 - **Concurrency.** ARCHITECTURE specifies one worker per provider; `cmd/cli.v` walks the plan in
   order. The reasoning for the departure is at the top of that file: the plan is already
   interleaved, so walking it in order measures every provider under the same conditions in turn,
-  where concurrent workers would have them contending for the link they are measuring. Worth
-  revisiting in M2, when a TLS handshake is worth overlapping.
+  where concurrent workers would have them contending for the link they are measuring. Now that
+  DoT and DoH pay a handshake, a full eight-probe run takes minutes, so this is worth
+  revisiting: the handshakes are the part where waiting is not measuring.
+- **Pacing outside the plan.** `measure_edge` and `measure_capabilities` walk their own passes
+  and do not go through the `Pacer`. Few queries each, but the run's own politeness rule does
+  not currently cover them.
 - **The domain set.** `cmd/cli.v` ships eight names as `builtin:top8`, labelled honestly as not
   being the pinned Tranco set. Generating the real one is a release task; see DATA § Tranco.
 - **ASN and region.** Both stubbed, so every run reports `region: global`. ARCHITECTURE
   § Region detection describes the cascade; nothing implements it.
 - **The cold-probe zone.** Live. `probe.dnsbench.esli.blog` is delegated to Bunny DNS, signed
   with algorithm 13, and answers a fresh random label with `192.0.2.1` at a TTL of 60. `delv`
-  validates it from the root. The first real run put Cloudflare sixth on `cold`, which is the
-  evidence the host choice was neutral. Pointing `--cold-zone` at your own zone is still
-  supported; DATA § Setting the zone up has the records and the verification commands.
+  validates it from the root. Pointing `--cold-zone` at your own zone is still supported; DATA
+  § Setting the zone up has the records and the verification commands.
+- **`--require`.** METHODOLOGY § filter says the filtering verdict is usable as a filter,
+  `--require filtering`. Nothing implements the flag.
+
+### Next: M3, the TUI
+
+`docs/TUI.md` specifies it in full over 183 lines and no code implements it, so there is no
+`--tui` flag and the README says so. It is the whole of the milestone: the `term.ui` frame
+loop, the live table fed from the scheduler, sorting and filtering, the detail view, profile
+cycling with live re-ranking and no re-measurement, colour semantics with `NO_COLOR` and a
+colourblind palette, and a graceful fall back when `TERM` is unset or `dumb`.
+
+The table the CLI already prints is the layout to start from. It carries `EDGE`, `MIS` and
+`DoT` columns and the measured-versus-declared badge split that TUI.md describes, so the
+column set is settled and the work is the frame loop rather than the design.
 
 ## Phases
 
