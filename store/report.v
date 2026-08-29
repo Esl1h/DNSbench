@@ -525,6 +525,11 @@ fn row_for(p ProviderResult, rank string) string {
 	if v := p.capabilities.dnssec_validating {
 		flags << if v { '+DNSSEC' } else { '-DNSSEC' }
 	}
+	// A measured badge, not a declared one: it says what the provider did when
+	// asked, which is allowed to contradict the tag beside it.
+	if blocked := p.capabilities.filtering['ads'] {
+		flags << if blocked { '+ads' } else { '-ads' }
+	}
 	for d in p.declared {
 		flags << '~${d}'
 	}
@@ -588,6 +593,9 @@ pub fn (r RunResult) to_markdown() string {
 		mut flags := []string{}
 		if v := p.capabilities.dnssec_validating {
 			flags << if v { 'DNSSEC' } else { 'no DNSSEC' }
+		}
+		if blocked := p.capabilities.filtering['ads'] {
+			flags << if blocked { 'blocks ads' } else { 'no ad blocking' }
 		}
 		for d in p.declared {
 			flags << '~${d}'

@@ -201,7 +201,26 @@ affect scoring.
 ### dnssec
 
 Query a domain with a deliberately broken signature. `SERVFAIL` means the resolver validated
-and rejected — correct behaviour. A successful answer means no validation.
+and rejected, which is correct behaviour. A successful answer means no validation.
+
+**Always with a control.** The same name is asked a second time with the CD bit set, which
+tells a validating resolver to hand the data over without checking it. Three states, not two:
+
+| plain | with CD | reading |
+|---|---|---|
+| SERVFAIL | NOERROR | it checked and refused. It validates |
+| NOERROR | any | it did not check, whatever its page says |
+| SERVFAIL | SERVFAIL | something else is wrong. Unknown, not no |
+
+Without the control, a test zone that has simply broken, or a path that eats the response,
+reads as every resolver validating, and 60 of the 100 capability points get handed out for a
+fault.
+
+**Asked three times, decided by majority.** One large anycast fleet does not answer
+consistently. AdGuard, asked ten times in a row from the same host, answered `SERVFAIL` nine
+times and `NOERROR` once, and the control answered `SERVFAIL` five times out of ten. A
+single-shot probe against that reports a different capability on every run. A split with no
+majority is unknown, and the tool says so rather than guessing.
 
 This is a **capability**, not a latency measurement. It contributes a fixed component to the
 score, and appears as a badge in the table.
@@ -209,7 +228,17 @@ score, and appears as a badge in the table.
 ### filter
 
 Query a well-known advertising domain. `NXDOMAIN`, `0.0.0.0`, `::` or an empty answer means
-blocking is active.
+blocking is active. `NOERROR` with nothing in the answer section is the quiet one: a resolver
+that answers successfully and returns nothing has refused without saying so, and reading only
+the rcode records that as a normal resolution. A `SERVFAIL` is not blocking; it is a broken
+path, and counting it as a feature would turn an outage into one.
+
+**Only the `ads` category is probed.** The output's `filtering` map is open, and a category
+that was not asked about is absent rather than false. There is no test name for malware or
+adult filtering that both resolves normally on a resolver that does not filter and is reliably
+blocked by one that does: the well-known OpenDNS test domains resolve to the same block-page
+address from every resolver, filtering or not, which makes them useless as a discriminator.
+Pinning a live malicious domain into a shipped catalog is not something a benchmark should do.
 
 Deliberately **not scored**. Whether filtering is good depends entirely on what the user
 wants, and a benchmark that quietly rewards blocking is expressing an opinion it has no

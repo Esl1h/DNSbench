@@ -10,6 +10,14 @@ comparability and `history` must be able to detect it.
 ## [Unreleased]
 
 ### Added
+- `core/capability.v`: the `dnssec` and `filter` probes. `dnssec` asks a deliberately broken
+  zone twice, once ordinarily and once with the CD bit, so that a test zone that has broken
+  or a path that eats the response reads as unknown rather than as every resolver validating.
+  `filter` asks an advertising domain and reads NXDOMAIN, an unroutable stand-in, or a
+  successful empty answer as a block; a SERVFAIL is a broken path and not a policy
+- `+DNSSEC`, `-DNSSEC`, `+ads` and `-ads` badges in the table and Markdown output, measured
+  and rendered apart from the `~declared` tags beside them, which they are allowed to
+  contradict
 - `core/doh.v`: DNS over HTTPS, RFC 8484, as `--probes doh`. The request is written by hand
   over a TLS connection dialled to an IP literal, because `net.http` resolves the URL's
   hostname itself and would put a lookup inside every sample, through a resolver that may be

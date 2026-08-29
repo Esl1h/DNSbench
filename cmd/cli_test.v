@@ -183,17 +183,21 @@ fn test_the_edge_probe_rides_two_transports() {
 	assert transports_used(['warm']) == ['udp']
 }
 
-fn test_the_edge_probe_is_refused_without_something_to_rank_against() {
-	// A provider is excluded on `warm` before any subscore is read, so an
-	// edge-only run would emit a table of unreachable rows each carrying an edge
-	// penalty nobody would ever see.
+fn test_the_probes_that_cannot_rank_are_kept_out_of_the_plan() {
+	// The edge and capability probes have no latency distribution: they ask a
+	// fixed number of questions and read the answers' shape. Putting them in the
+	// plan would multiply them by rounds and domains, and a run of only those
+	// would emit a table of rows nothing could be ranked from.
 	assert timed_probes(['warm', 'ecs'])! == ['warm']
 	assert timed_probes(['ecs', 'tcp'])! == ['tcp']
+	assert timed_probes(['warm', 'dnssec', 'filter'])! == ['warm']
 
-	if kept := timed_probes(['ecs']) {
-		assert false, 'expected an error, got ${kept}'
-	} else {
-		assert err.msg().contains('needs a latency probe')
+	for alone in [['ecs'], ['dnssec'], ['filter'], ['dnssec', 'filter', 'ecs']] {
+		if kept := timed_probes(alone) {
+			assert false, 'expected an error for ${alone}, got ${kept}'
+		} else {
+			assert err.msg().contains('need a latency probe')
+		}
 	}
 }
 

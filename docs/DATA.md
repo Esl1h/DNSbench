@@ -197,6 +197,23 @@ same address on 853. Carried as `udp4` it would be measured as a broken plaintex
 dropped entirely it would be invisible. Carried as `dot4` it is what it is, and it appears in
 a run exactly when a DoT probe was asked for.
 
+### Capability probe names
+
+Two fixed names, pinned like everything else and documented here because the reading depends
+entirely on which name was asked.
+
+`dnssec-failed.org` is a zone its operator keeps deliberately broken so that validation can be
+tested. It is asked twice per attempt, once ordinarily and once with the CD bit, and three
+times over. See METHODOLOGY § dnssec for why the control and the repetition are not optional.
+
+`doubleclick.net` is the advertising domain for the `filter` probe. It was chosen by
+measurement: on a filtering resolver it comes back as `0.0.0.0`, and on every unfiltered
+resolver tested it comes back as a real address. Candidates that failed that test are on
+record so nobody reaches for them again: `ads.doubleclick.net` is `NXDOMAIN` everywhere,
+including on resolvers that filter nothing, and the OpenDNS test names
+(`internetbadguys.com`, `examplemalwaredomain.com`, `exampleadultsite.com`) resolve to the same
+block-page address from every resolver, which would report the whole catalog as filtering.
+
 ### CDN hosts for the edge probe
 
 Curated, embedded, health-checked. Global multi-PoP CDNs only — this is correctness, not

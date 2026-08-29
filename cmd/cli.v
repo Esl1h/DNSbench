@@ -81,7 +81,8 @@ fn usage() {
 	eprintln('  --profile <name>   ${core.profiles.keys().join(', ')}  (default: balanced)')
 	eprintln('  --only <keys>      comma-separated provider keys')
 	eprintln('  --rounds <n>       measured rounds per provider (default: 5)')
-	eprintln('  --probes <names>   warm, tcp, cold, ecs, dot-fresh, dot-warm, doh  (default: warm)')
+	eprintln('  --probes <names>   warm, tcp, cold, ecs, dot-fresh, dot-warm, doh, dnssec, filter')
+	eprintln('                     (default: warm)')
 	eprintln('  --format <name>    table, json, csv, markdown  (default: table)')
 	eprintln('  --history <path>   append the run to a JSONL history file')
 	eprintln('  --timeout <ms>     per-query timeout (default: 2000)')
@@ -288,7 +289,7 @@ fn run(opts Options) !store.RunResult {
 	mut probes_for := map[string][]string{}
 	for s in subjects {
 		keys << s.key
-		own := s.probes.filter(it != 'ecs')
+		own := s.probes.filter(it != 'ecs' && it !in capability_probes)
 		if own != timed {
 			probes_for[s.key] = own
 		}
@@ -307,6 +308,11 @@ fn run(opts Options) !store.RunResult {
 	)!
 
 	execute(plan, mut subjects, opts, ca_bundle)!
+
+	mut capabilities := map[string]Capability{}
+	if probes.any(it in capability_probes) {
+		capabilities = measure_capabilities(subjects, probes, opts)
+	}
 
 	mut edge := map[string]core.EdgePenalty{}
 	mut best_rtt := ?f64(none)
@@ -334,7 +340,7 @@ fn run(opts Options) !store.RunResult {
 	}
 
 	duration := f64(time.since(started).microseconds()) / 1_000_000.0
-	return assemble(subjects, edge, best_rtt, opts, net, cat, started, duration, warnings)
+	return assemble(subjects, edge, capabilities, best_rtt, opts, net, cat, started, duration, warnings)
 }
 
 // timed_probes is the probe list the plan walks: everything but the edge probe.
@@ -343,11 +349,123 @@ fn run(opts Options) !store.RunResult {
 // any subscore is read, so an edge-only run would emit a table of unreachable
 // rows each carrying an edge penalty nobody would ever see.
 fn timed_probes(probes []string) ![]string {
-	out := probes.filter(it != 'ecs')
+	out := probes.filter(it != 'ecs' && it !in capability_probes)
 	if out.len == 0 {
-		return error('--probes ecs needs a latency probe to rank against; add warm')
+		return error('--probes ecs, dnssec and filter need a latency probe to rank against; add warm')
 	}
 	return out
+}
+
+// Capability is what the two shape-reading probes established about one
+// provider. Both fields are absent when the probe did not run or could not
+// decide, which is not the same as a no.
+struct Capability {
+	dnssec_validating ?bool
+	filters_ads       ?bool
+}
+
+// measure_capabilities asks each provider the two questions that have an answer
+// rather than a duration.
+//
+// One pass, not rounds: whether a resolver validates does not vary between the
+// third and the fortieth time it is asked, and asking forty times would be
+// forty queries against a deliberately broken zone somebody else operates.
+fn measure_capabilities(subjects []Subject, probes []string, opts Options) map[string]Capability {
+	mut out := map[string]Capability{}
+	mut udp := map[string]&core.UdpTransport{}
+	defer {
+		for _, mut t in udp {
+			t.close()
+		}
+	}
+
+	want_dnssec := 'dnssec' in probes
+	want_filter := 'filter' in probes
+
+	for s in subjects {
+		mut validating := ?bool(none)
+		mut filtering := ?bool(none)
+
+		if want_dnssec {
+			// Asked more than once, because at least one large anycast fleet
+			// answers inconsistently and a single reading of it is a coin flip.
+			// docs/METHODOLOGY.md § dnssec.
+			mut yes := 0
+			mut no := 0
+			for _ in 0 .. dnssec_attempts {
+				plain := ask_rcode(s, opts, dnssec_probe_name, false, mut udp) or { continue }
+				with_cd := ask_rcode(s, opts, dnssec_probe_name, true, mut udp) or { continue }
+				verdict := core.dnssec_verdict(plain, with_cd) or { continue }
+				if verdict {
+					yes++
+				} else {
+					no++
+				}
+			}
+			validating = core.majority_verdict(yes, no)
+		}
+		if want_filter {
+			if answer := ask_answer(s, opts, filter_probe_name, mut udp) {
+				filtering = core.is_blocked(answer.code, answer.addresses)
+			}
+		}
+
+		out[s.key] = Capability{
+			dnssec_validating: validating
+			filters_ads: filtering
+		}
+	}
+	return out
+}
+
+struct Answer {
+	code      u8
+	addresses []string
+}
+
+// ask_answer puts one question to a provider and returns what came back.
+fn ask_answer(s Subject, opts Options, name string, mut udp map[string]&core.UdpTransport) ?Answer {
+	if s.ip == '' {
+		return none
+	}
+	if s.key !in udp {
+		mut t := &core.UdpTransport{}
+		t.open(core.Target{ ip: s.ip, timeout: opts.timeout }) or { return none }
+		udp[s.key] = t
+	}
+	mut t := udp[s.key] or { return none }
+
+	msg := core.build_query(name, core.qtype_a) or { return none }
+	reply, _ := t.query(msg) or { return none }
+	resp := core.parse_response(reply) or {
+		return Answer{
+			code: core.rcode(reply)
+		}
+	}
+	return Answer{
+		code: core.rcode(reply)
+		addresses: resp.a_addresses()
+	}
+}
+
+// ask_rcode is ask_answer for the DNSSEC pair, where only the rcode matters and
+// the CD bit has to be set on the control.
+fn ask_rcode(s Subject, opts Options, name string, checking_disabled bool, mut udp map[string]&core.UdpTransport) ?u8 {
+	if s.ip == '' {
+		return none
+	}
+	if s.key !in udp {
+		mut t := &core.UdpTransport{}
+		t.open(core.Target{ ip: s.ip, timeout: opts.timeout }) or { return none }
+		udp[s.key] = t
+	}
+	mut t := udp[s.key] or { return none }
+
+	msg := core.build_query_opts(name, core.qtype_a, id: rand.u16(), cd: checking_disabled) or {
+		return none
+	}
+	reply, _ := t.query(msg) or { return none }
+	return core.rcode(reply)
 }
 
 // measure_edge resolves every CDN host through every provider and times a TCP
@@ -448,12 +566,31 @@ const warm_domains = [
 
 // known_probes is the vocabulary of --probes, in the output contract's
 // spelling. docs/METHODOLOGY.md § Probes.
-const known_probes = ['warm', 'tcp', 'cold', 'ecs', 'dot_fresh', 'dot_warm', 'doh']
+const known_probes = ['warm', 'tcp', 'cold', 'ecs', 'dot_fresh', 'dot_warm', 'doh', 'dnssec', 'filter']
 
 // encrypted_probes need a TLS connection and a trust anchor.
 const dot_probes = ['dot_fresh', 'dot_warm']
 
 const encrypted_probes = ['dot_fresh', 'dot_warm', 'doh']
+
+// capability_probes ask one question each and read the answer's shape. They
+// produce no latency distribution, so they never enter the plan.
+const capability_probes = ['dnssec', 'filter']
+
+// dnssec_probe_name is a zone signed with a deliberately broken signature, kept
+// that way on purpose by its operator so that validation can be tested. Asked
+// twice, once ordinarily and once with the CD bit. docs/DATA.md § Capability
+// probe names.
+const dnssec_probe_name = 'dnssec-failed.org'
+
+// dnssec_attempts is how many times the pair is asked. Three, because a fleet
+// that answers inconsistently needs a majority and two readings cannot produce
+// one. docs/METHODOLOGY.md § dnssec.
+const dnssec_attempts = 3
+
+// filter_probe_name is an advertising domain that resolves normally on a
+// resolver that does not filter and is substituted on one that does.
+const filter_probe_name = 'doubleclick.net'
 
 // dot_port and dot_timeout are RFC 7858's port and the encrypted-probe budget
 // of docs/METHODOLOGY.md § Timeouts, which is longer than the plaintext one
@@ -873,7 +1010,7 @@ fn query_name(step core.Step, cold_zone string) string {
 	return '${rand.string_from_set('abcdefghijklmnopqrstuvwxyz0123456789', 16)}.${cold_zone}'
 }
 
-fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, best_rtt ?f64, opts Options, net core.NetInfo, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning) store.RunResult {
+fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities map[string]Capability, best_rtt ?f64, opts Options, net core.NetInfo, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning) store.RunResult {
 	weights := core.profiles[opts.profile] or { core.Weights{} }
 	expected := core.expected_samples(opts.rounds, warm_domains.len)
 
@@ -885,6 +1022,10 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, best_rtt ?f64,
 				is_cache: s.is_cache
 				attempted: attempted_of(s, expected)
 				ecs_penalty_ms: median_penalty(edge, s.key)
+				// False when the probe said no and when it did not run. The
+				// score cannot award points for an unknown, and the output
+				// keeps the three states apart under capabilities.
+				dnssec_validating: capabilities[s.key].dnssec_validating or { false }
 				offers_dot: s.dot_ip != ''
 				offers_ipv6: net.ipv6
 				declared: s.declared
@@ -927,7 +1068,7 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, best_rtt ?f64,
 		for name in subject.probes {
 			// The edge probe reports under `edge`, not under `probes`: it has an
 			// answer and a connect time per host, not a latency distribution.
-			if name == 'ecs' {
+			if name == 'ecs' || name in capability_probes {
 				continue
 			}
 			reports << store.ProbeReport{
@@ -957,8 +1098,10 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, best_rtt ?f64,
 			probes: reports
 			edge: edge_report(edge, subject.key)
 			capabilities: store.Capabilities{
-				// dnssec_validating stays absent until the probe that
-				// establishes it lands in M2. Absent is not false.
+				// Absent is not false: it says the probe did not run, or ran and
+				// could not decide.
+				dnssec_validating: capabilities[subject.key].dnssec_validating
+				filtering: filtering_of(capabilities[subject.key])
 				transports: transports_used(subject.probes)
 				ipv6: net.ipv6
 			}
@@ -1027,7 +1170,22 @@ fn transports_used(probes []string) []string {
 
 // attempted_of is every query the run put to a subject, on any probe.
 fn attempted_of(s Subject, expected int) int {
-	return s.probes.filter(it != 'ecs').len * expected
+	return s.probes.filter(it != 'ecs' && it !in capability_probes).len * expected
+}
+
+// filtering_of renders the filter probe's verdict by category.
+//
+// Only `ads` is probed. There is no test name for the other categories that
+// both resolves normally on a resolver that does not filter and is reliably
+// blocked by one that does, and pinning a live malicious domain into a shipped
+// catalog is not something a benchmark should do. An absent category says the
+// question was not asked. docs/DATA.md § Capability probe names.
+fn filtering_of(c Capability) map[string]bool {
+	mut out := map[string]bool{}
+	if blocked := c.filters_ads {
+		out['ads'] = blocked
+	}
+	return out
 }
 
 // median_penalty is the figure the `edge` subscore divides by, absent for a
