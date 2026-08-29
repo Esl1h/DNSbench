@@ -99,7 +99,13 @@ comparability and `history` must be able to detect it.
   `p50` would describe the uncertainty of a different quantity from the one being read
 - `testdata/golden/` holds run results, and `make schema` validates that directory rather than
   all of `testdata/`, which also holds fixtures that are inputs rather than outputs
-- Cold-probe zone fixed at `probe.dnsbench.esli.cafe`, a DNSSEC-signed delegated subzone
+- Cold-probe zone fixed at `probe.dnsbench.esli.blog`, a DNSSEC-signed subzone delegated to
+  Bunny DNS. The host is a fairness constraint and not an operational detail: `cold` measures
+  the hop from a resolver to the authoritative, so hosting it on an operator that also runs a
+  resolver in the catalog would hand that resolver an intra-network advantage no column
+  explains. Cloudflare and DigitalOcean are both disqualified by it, DigitalOcean because its
+  nameservers are Cloudflare's. `DATA.md` § The operator, and how it was chosen carries the
+  measured comparison
 - Percentile method fixed at nearest-rank with no interpolation, and per-probe timeouts
   defined (2 s plaintext, 5 s encrypted). Both were previously unspecified and both silently
   change reported numbers

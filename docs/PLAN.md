@@ -25,7 +25,7 @@ between plausible V and V that runs.
 | # | Decision | Outcome |
 |---|---|---|
 | 1 | Project name | `dnsbench`. GRC's product is Windows-only and unrelated in distribution |
-| 2 | Cold-probe zone | `probe.dnsbench.esli.blog`, delegated subzone, DNSSEC-signed |
+| 2 | Cold-probe zone | `probe.dnsbench.esli.blog`, delegated to Bunny DNS, neutral and anycast, DNSSEC-signed |
 | 8 | TLS trust anchor | System CA bundle located at runtime, `--ca-bundle` override, never embedded |
 | 9 | Percentile method | Nearest-rank, no interpolation |
 | 10 | Probe timeouts | 2 s plaintext, 5 s encrypted |
@@ -45,12 +45,15 @@ subscore, `best_p50 / this_p50`, divided by it. Both are written into the specif
 The reasoning for each lives with the decision it belongs to, in `docs/ROADMAP.md`,
 `docs/ARCHITECTURE.md`, `docs/METHODOLOGY.md` and `docs/SCORING.md`.
 
-The cold-probe zone sits on `esli.blog`, the same domain that serves the write-up, which keeps
-the tool and the article legible as one thing. It is long-lived public infrastructure taking
-query traffic from every user of the binary, so it is **delegated** as its own subzone rather
-than living in the apex zone: a mistake in the probe zone, a nameserver migration, or an
-unexpected volume spike stops at the delegation and never reaches the records that serve the
-site.
+The cold-probe zone sits under `esli.blog`, the same domain that serves the write-up, which
+keeps the tool and the article legible as one thing. It is **delegated** to nameservers that
+belong to no resolver in the catalog, and that is a fairness requirement rather than operational
+hygiene: `cold` measures the hop from a resolver to the authoritative, so an authoritative
+operated by one of the resolvers under test hands that resolver an advantage no column would
+explain. Blast radius is the second reason and the smaller one. The host is Bunny DNS, chosen
+on measured latency, DNSSEC support and unmetered queries; the comparison and the two caveats
+that come with it are in DATA § Where the zone is hosted is a fairness question and § The
+operator, and how it was chosen.
 
 ## Where this stands
 
