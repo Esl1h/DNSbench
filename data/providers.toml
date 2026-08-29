@@ -1,12 +1,12 @@
 # dnsbench — curated provider catalog
 # Embedded into the binary via $embed_file. See docs/DATA.md for inclusion criteria.
 #
-# Endpoints verified 2026-08-28. Providers change endpoints; verify before trusting.
+# Endpoints verified 2026-08-29. Providers change endpoints; verify before trusting.
 # Tag vocabulary is a closed set — see docs/DATA.md. Declared-only tags are never
 # allowed to contribute to a measured subscore.
 
-version = 3
-generated = "2026-08-28"
+version = 4
+generated = "2026-08-29"
 
 # ── NextDNS ──────────────────────────────────────────────────────────────────
 # The __PROFILE__ placeholder is substituted from --nextdns-id or config.
@@ -114,23 +114,20 @@ homepage = "https://adguard-dns.io/en/public-dns.html"
 [[provider]]
 key      = "mullvad"
 label    = "Mullvad"
-udp4     = ["194.242.2.2"]
-udp6     = ["2a07:e340::2"]
 dot      = "dns.mullvad.net"
 doh      = "https://dns.mullvad.net/dns-query"
 tags     = ["dnssec", "nolog", "nofilter", "audited"]
 homepage = "https://mullvad.net/en/help/dns-over-https-and-dns-over-tls"
-notes    = "RAM-only servers, no ECS. Modest PoP footprint outside Europe."
+notes    = "Encrypted only. 194.242.2.2 answers on port 53, but REFUSED to everything except its own hostnames; the homepage says those IPs cannot be used over UDP/53 or TCP/53. RAM-only servers, no ECS. Modest PoP footprint outside Europe."
 
 [[provider]]
 key      = "mullvad-base"
 label    = "Mullvad (base)"
-udp4     = ["194.242.2.4"]
-udp6     = ["2a07:e340::4"]
 dot      = "base.dns.mullvad.net"
 doh      = "https://base.dns.mullvad.net/dns-query"
 tags     = ["dnssec", "nolog", "ads", "malware", "audited"]
 homepage = "https://github.com/mullvad/dns-adblock"
+notes    = "Encrypted only, on the same terms as mullvad."
 
 # ── Control D ────────────────────────────────────────────────────────────────
 [[provider]]

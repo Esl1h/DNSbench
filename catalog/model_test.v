@@ -6,9 +6,28 @@ module catalog
 fn test_the_embedded_catalog_loads() ! {
 	c := embedded()!
 
-	assert c.version == 3
-	assert c.generated == '2026-08-28'
+	assert c.version == 4
+	assert c.generated == '2026-08-29'
 	assert c.providers.len == 16
+}
+
+// Mullvad publishes 194.242.2.2 and 2a07:e340::2, and its own help page says
+// those addresses cannot be used over UDP/53 or TCP/53: the resolver listening
+// there answers REFUSED to everything but its own hostnames. The addresses read
+// like plaintext endpoints and are not, so the absence is asserted rather than
+// left to whoever next copies the block.
+fn test_mullvad_carries_no_plaintext_endpoint() ! {
+	c := embedded()!
+
+	for p in c.providers {
+		if p.key !in ['mullvad', 'mullvad-base'] {
+			continue
+		}
+		assert p.udp4.len == 0
+		assert p.udp6.len == 0
+		assert p.dot != ''
+		assert p.doh != ''
+	}
 }
 
 fn test_every_embedded_provider_is_probeable_and_documented() ! {

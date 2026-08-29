@@ -85,6 +85,9 @@ comparability and `history` must be able to detect it.
   the link cannot carry
 
 ### Changed
+- Catalog `version` 3 to 4, `generated` 2026-08-29. Removing Mullvad's plaintext endpoints
+  changes which providers a plaintext run covers, so runs across the bump are not comparable
+  and `history` must treat them as separate populations
 - `p50`, `p95`, `max`, `mean` and `jitter` are absent, and serialize as `null`, when there was
   no sample to derive them from: all five at `n = 0`, and `jitter` also at `n = 1`, where the
   sample standard deviation is undefined. They were 0, which is a latency and the best one on
@@ -111,6 +114,11 @@ comparability and `history` must be able to detect it.
   change reported numbers
 
 ### Fixed
+- `data/providers.toml`: `mullvad` and `mullvad-base` carried `udp4` and `udp6` addresses
+  that are not plaintext endpoints. Mullvad's own help page, already the `homepage` of both
+  entries, says those IPs "can only be used with DNS resolvers that support DoH or DoT, not
+  with DNS over UDP/53 or TCP/53", and the resolver on port 53 answers REFUSED to every name
+  but Mullvad's own. Both entries are now DoT and DoH only and return in M2
 - `cmd/cli.v`: `--help` listed `warm, tcp` as the known probes and omitted `cold`, which the
   parser has always accepted and which the parser's own error message already named
 - `ARCHITECTURE.md`: the `Transport.query` signature had a spurious pair of parentheses
