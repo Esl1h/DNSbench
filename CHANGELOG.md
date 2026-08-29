@@ -111,6 +111,8 @@ comparability and `history` must be able to detect it.
   change reported numbers
 
 ### Fixed
+- `cmd/cli.v`: `--help` listed `warm, tcp` as the known probes and omitted `cold`, which the
+  parser has always accepted and which the parser's own error message already named
 - `ARCHITECTURE.md`: the `Transport.query` signature had a spurious pair of parentheses
 - `METHODOLOGY.md`: the DoT dial example used `dial_ip`, which does not exist in V. Replaced
   with the `dial_tcp` plus `SSLConn.connect` form, verified against a live resolver

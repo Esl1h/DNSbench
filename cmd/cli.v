@@ -73,7 +73,7 @@ fn usage() {
 	eprintln('  --profile <name>   ${core.profiles.keys().join(', ')}  (default: balanced)')
 	eprintln('  --only <keys>      comma-separated provider keys')
 	eprintln('  --rounds <n>       measured rounds per provider (default: 5)')
-	eprintln('  --probes <names>   warm, tcp  (default: warm)')
+	eprintln('  --probes <names>   warm, tcp, cold  (default: warm)')
 	eprintln('  --format <name>    table, json, csv, markdown  (default: table)')
 	eprintln('  --history <path>   append the run to a JSONL history file')
 	eprintln('  --timeout <ms>     per-query timeout (default: 2000)')
