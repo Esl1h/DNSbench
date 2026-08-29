@@ -55,11 +55,25 @@ pub:
 	needs_config bool
 }
 
+// CdnHost is one target for the edge probe. The set is curated and embedded
+// for the same reason the provider list is: a host resolved at run time is a
+// host that can change between two runs the tool claims are comparable.
+pub struct CdnHost {
+pub:
+	host string
+	cdn  string
+	// expect_cname_suffix is what the answer's CNAME chain has to end in for the
+	// entry to still be measuring the CDN it was chosen for. Empty means the
+	// host answers with addresses directly and there is no chain to check.
+	expect_cname_suffix string
+}
+
 pub struct Catalog {
 pub:
 	version   int
 	generated string
 	providers []Provider
+	cdn_hosts []CdnHost
 }
 
 // declared returns the tags this provider asserts about itself and that no
@@ -160,10 +174,38 @@ pub fn parse(text string) !Catalog {
 		return error('catalog contains no providers')
 	}
 
+	mut cdn_hosts := []CdnHost{}
+	mut seen_host := map[string]bool{}
+	// A catalog with no [[cdn_host]] is legal: the edge probe is then simply not
+	// runnable, which the CLI reports rather than treating as a broken catalog.
+	if entries_cdn := doc.value_opt('cdn_host') {
+		for entry in entries_cdn.array() {
+			m := entry.as_map()
+			host := m['host'] or { toml.Any('') }.string()
+			if host == '' {
+				return error('cdn_host at index ${cdn_hosts.len} has no host')
+			}
+			if seen_host[host] {
+				return error('duplicate cdn_host "${host}"')
+			}
+			seen_host[host] = true
+			cdn := m['cdn'] or { toml.Any('') }.string()
+			if cdn == '' {
+				return error('cdn_host "${host}" does not say which CDN it probes')
+			}
+			cdn_hosts << CdnHost{
+				host: host
+				cdn: cdn
+				expect_cname_suffix: m['expect_cname_suffix'] or { toml.Any('') }.string()
+			}
+		}
+	}
+
 	return Catalog{
 		version: doc.value('version').int()
 		generated: doc.value('generated').string()
 		providers: providers
+		cdn_hosts: cdn_hosts
 	}
 }
 

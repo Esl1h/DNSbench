@@ -81,6 +81,11 @@ pub:
 	rclass u16
 	ttl    u32
 	rdata  []u8
+	// Where rdata begins in the message it was parsed from. A name inside rdata,
+	// a CNAME target above all, may carry a compression pointer into any earlier
+	// part of that message, so decoding it needs the whole buffer and this
+	// offset rather than the rdata slice on its own.
+	rdata_off int
 }
 
 pub struct Response {
@@ -208,6 +213,39 @@ pub fn parse_response(buf []u8) !Response {
 		authority: authority
 		additional: additional
 	}
+}
+
+// a_addresses returns the IPv4 addresses of the answer section, in the order
+// the server sent them.
+//
+// Order is preserved rather than sorted: a CDN puts the edge it wants used
+// first, and the edge probe connects to what a client would have connected to.
+pub fn (r Response) a_addresses() []string {
+	mut out := []string{}
+	for rr in r.answer {
+		if rr.rtype != qtype_a || rr.rdata.len != 4 {
+			continue
+		}
+		out << '${rr.rdata[0]}.${rr.rdata[1]}.${rr.rdata[2]}.${rr.rdata[3]}'
+	}
+	return out
+}
+
+// cname_targets returns the CNAME targets of the answer section, in order.
+//
+// It needs the buffer the response was parsed from, because a CNAME target is
+// a name and names are compressible: the target is very often a pointer back
+// to the question, and the rdata bytes alone cannot be read without it.
+pub fn (r Response) cname_targets(buf []u8) ![]string {
+	mut out := []string{}
+	for rr in r.answer {
+		if rr.rtype != qtype_cname {
+			continue
+		}
+		name, _ := decode_name(buf, rr.rdata_off)!
+		out << name
+	}
+	return out
 }
 
 // parse_header decodes the fixed 12-octet header.
@@ -355,6 +393,7 @@ fn parse_rrs(buf []u8, start int, count u16) !([]ResourceRecord, int) {
 			rclass: be16(buf, next + 2)
 			ttl: be32(buf, next + 4)
 			rdata: buf[rdata_start..rdata_start + rdlength].clone()
+			rdata_off: rdata_start
 		}
 		off = rdata_start + rdlength
 	}

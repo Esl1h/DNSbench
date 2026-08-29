@@ -321,3 +321,26 @@ fn test_parse_rejects_a_pointer_chain_that_cycles_while_going_backwards() {
 		assert err.msg().contains('not below the previous target')
 	}
 }
+
+fn test_the_answer_helpers_read_what_the_edge_probe_needs() ! {
+	// The edge probe wants two things from a CDN answer: the address to connect
+	// to, and the CNAME chain that says which CDN answered. Both come out of
+	// testdata/cname.response.bin, whose second CNAME target is itself a
+	// compression pointer, so the chain cannot be read from the rdata slices
+	// alone.
+	buf := capture('cname.response.bin')!
+	r := parse_response(buf)!
+
+	assert r.a_addresses() == ['23.192.58.93']
+	assert r.cname_targets(buf)! == ['www.microsoft.com-c-3.edgekey.net', 'e13678.dscb.akamaiedge.net']
+}
+
+fn test_an_answer_with_no_address_yields_no_address() ! {
+	// A CNAME-only answer, or an NXDOMAIN, has nothing to connect to. The edge
+	// probe has to see an empty list rather than a zero address.
+	buf := capture('nxdomain.response.bin')!
+	r := parse_response(buf)!
+
+	assert r.a_addresses().len == 0
+	assert r.cname_targets(buf)!.len == 0
+}

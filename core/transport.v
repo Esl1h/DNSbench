@@ -277,3 +277,57 @@ fn read_exact(mut conn net.TcpConn, mut buf []u8) ! {
 		got += n
 	}
 }
+
+// ── TCP connect timing, for the edge probe ───────────────────────────────────
+
+// edge_connect_timeout is the budget for one CDN connect.
+// docs/METHODOLOGY.md § Timeouts.
+pub const edge_connect_timeout = 2 * time.second
+
+struct ConnectOutcome {
+	ms  f64
+	err string
+}
+
+// connect_ms opens a TCP connection, times it, and closes it immediately.
+//
+// Connect only: never a TLS handshake and never a request. The edge probe
+// measures the distance to the address a resolver chose, and a handshake would
+// fold the server's own behaviour into that number.
+//
+// The connect runs in its own thread and the caller waits on a channel with a
+// deadline. That is not concurrency for speed, it is the only way to bound it:
+// V's net.dial_tcp performs a blocking connect on the default build path, with
+// no timeout parameter, so a CDN address that black-holes 443 would stall the
+// run for however long the operating system takes to give up, which on Linux is
+// over two minutes. The abandoned thread ends on its own when the kernel does.
+pub fn connect_ms(address string, budget time.Duration) !f64 {
+	ch := chan ConnectOutcome{ cap: 1 }
+
+	spawn fn (address string, ch chan ConnectOutcome) {
+		sw := time.new_stopwatch()
+		mut conn := net.dial_tcp(address) or {
+			ch <- ConnectOutcome{
+				err: err.msg()
+			}
+			return
+		}
+		elapsed := f64(sw.elapsed().microseconds()) / 1000.0
+		conn.close() or {}
+		ch <- ConnectOutcome{
+			ms: elapsed
+		}
+	}(address, ch)
+	select {
+		outcome := <-ch {
+			if outcome.err != '' {
+				return error(outcome.err)
+			}
+			return outcome.ms
+		}
+		budget {
+			return error('no connection to ${address} within ${budget.milliseconds()} ms')
+		}
+	}
+	return error('connect to ${address} ended without an outcome')
+}

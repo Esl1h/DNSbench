@@ -10,6 +10,17 @@ comparability and `history` must be able to detect it.
 ## [Unreleased]
 
 ### Added
+- `core/edge.v`: the ECS probe, the metric the project exists for. Each CDN host is resolved
+  through every provider and a TCP connect to the returned address is timed; the baseline for
+  a host is the best connect any provider achieved in the same run, so the probe calibrates
+  itself and needs no geolocation, IP database or country code
+- `--probes ecs`, five `[[cdn_host]]` entries in the catalog, and an `EDGE` column in the
+  table and Markdown output
+- `core/transport.v`: `connect_ms`, a TCP connect bounded by a deadline. V's `net.dial_tcp`
+  performs a blocking connect with no timeout on the default build path, so one CDN address
+  that black-holes 443 would otherwise stall a run for as long as the kernel takes to give up
+- `core/wire.v`: `Response.a_addresses` and `Response.cname_targets`, with `rdata_off` on
+  every record so a compressed CNAME target can be decoded against the message it came from
 - `refused` on every probe's stats, in JSON, CSV and the history lines: attempts the resolver
   answered with a non-NOERROR rcode. They produce no latency, so they never reach `n`
 - `excluded: "refused"`, for a provider that answered every query and resolved none of them
@@ -88,6 +99,15 @@ comparability and `history` must be able to detect it.
   the link cannot carry
 
 ### Changed
+- Catalog `version` 4 to 5: the `[[cdn_host]]` table is new, so a run against version 4 has
+  no edge column and is not comparable
+- `docs/DATA.md`: the CDN example claimed `www.microsoft.com` ends in `akadns.net`. Verified
+  against four resolvers, the chain ends in `akamaiedge.net`, and an entry with the wrong
+  expected suffix would mark itself stale on every run
+- `docs/DATA.md`: the CDN health check is run-wide and drawn from the run's own answers,
+  rather than a separate lookup at run start. A separate lookup needs a reference resolver,
+  and every candidate is either under test or the system resolver; and one provider answering
+  oddly is the signal the probe exists to catch, not evidence the entry has rotted
 - `loss` now counts only attempts that drew no answer at all. A REFUSED, SERVFAIL or NXDOMAIN
   reply used to be counted as a lost packet, which reported a resolver that answered every
   query in 380 ms as 100% loss and unreachable, blaming the network for a decision the

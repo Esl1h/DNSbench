@@ -73,7 +73,7 @@ fn usage() {
 	eprintln('  --profile <name>   ${core.profiles.keys().join(', ')}  (default: balanced)')
 	eprintln('  --only <keys>      comma-separated provider keys')
 	eprintln('  --rounds <n>       measured rounds per provider (default: 5)')
-	eprintln('  --probes <names>   warm, tcp, cold  (default: warm)')
+	eprintln('  --probes <names>   warm, tcp, cold, ecs  (default: warm)')
 	eprintln('  --format <name>    table, json, csv, markdown  (default: table)')
 	eprintln('  --history <path>   append the run to a JSONL history file')
 	eprintln('  --timeout <ms>     per-query timeout (default: 2000)')
@@ -136,8 +136,8 @@ fn parse_args(args []string) !Options {
 			'--probes' {
 				names := value.split(',').map(it.trim_space()).filter(it != '')
 				for name in names {
-					if name !in ['warm', 'tcp', 'cold'] {
-						return error('unknown probe "${name}"; known: warm, tcp, cold')
+					if name !in ['warm', 'tcp', 'cold', 'ecs'] {
+						return error('unknown probe "${name}"; known: warm, tcp, cold, ecs')
 					}
 				}
 				o = Options{ ...o, probes: names }
@@ -235,6 +235,16 @@ fn run(opts Options) !store.RunResult {
 		}
 	}
 
+	// The edge probe is not a latency probe and does not belong in the plan: it
+	// asks each CDN host once per provider and times a TCP connect, where the
+	// plan is rounds over a domain set. It also cannot rank on its own, because
+	// a provider is excluded on `warm` before any subscore is read.
+	run_edge := 'ecs' in probes
+	timed := timed_probes(probes)!
+	if run_edge && cat.cdn_hosts.len == 0 {
+		return error('the catalog carries no cdn_host entries for the edge probe')
+	}
+
 	mut keys := []string{cap: subjects.len}
 	for s in subjects {
 		keys << s.key
@@ -242,7 +252,7 @@ fn run(opts Options) !store.RunResult {
 
 	plan := core.build_plan(
 		provider_keys: keys
-		probes: probes
+		probes: timed
 		domains: warm_domains
 		rounds: opts.rounds
 		seed: opts.seed
@@ -250,8 +260,110 @@ fn run(opts Options) !store.RunResult {
 
 	execute(plan, mut subjects, opts)!
 
+	mut edge := map[string]core.EdgePenalty{}
+	mut best_rtt := ?f64(none)
+	if run_edge {
+		samples := measure_edge(subjects, cat.cdn_hosts, opts)
+		edge = core.edge_penalties(samples)
+		// The scale the edge subscore is drawn against. Without it the penalties
+		// are computed and then have nothing to be scored relative to, and the
+		// column comes out null on every row.
+		best_rtt = core.best_edge_rtt(samples)
+	}
+
 	duration := f64(time.since(started).microseconds()) / 1_000_000.0
-	return assemble(subjects, probes, opts, net, cat, started, duration, warnings)
+	return assemble(subjects, probes, edge, best_rtt, opts, net, cat, started, duration, warnings)
+}
+
+// timed_probes is the probe list the plan walks: everything but the edge probe.
+//
+// The edge probe cannot stand alone. A provider is excluded on `warm` before
+// any subscore is read, so an edge-only run would emit a table of unreachable
+// rows each carrying an edge penalty nobody would ever see.
+fn timed_probes(probes []string) ![]string {
+	out := probes.filter(it != 'ecs')
+	if out.len == 0 {
+		return error('--probes ecs needs a latency probe to rank against; add warm')
+	}
+	return out
+}
+
+// measure_edge resolves every CDN host through every provider and times a TCP
+// connection to the address that came back.
+//
+// One pass, not rounds: the question is which edge a resolver chose, and asking
+// it forty times measures the same choice forty times. The hosts are walked in
+// the outer loop so that all providers are asked about a host at close to the
+// same moment, which bounds how far an anycast target can drift underneath the
+// comparison.
+fn measure_edge(subjects []Subject, hosts []catalog.CdnHost, opts Options) map[string][]core.EdgeSample {
+	mut out := map[string][]core.EdgeSample{}
+	mut udp := map[string]&core.UdpTransport{}
+	defer {
+		for _, mut t in udp {
+			t.close()
+		}
+	}
+
+	for host in hosts {
+		for s in subjects {
+			out[s.key] << edge_sample(s, host, opts, mut udp)
+		}
+	}
+	return out
+}
+
+// edge_sample is one provider's answer for one CDN host, and the connect that
+// followed it.
+fn edge_sample(s Subject, host catalog.CdnHost, opts Options, mut udp map[string]&core.UdpTransport) core.EdgeSample {
+	requires := host.expect_cname_suffix != ''
+	blank := core.EdgeSample{
+		host: host.host
+		requires_suffix: requires
+	}
+
+	if s.key !in udp {
+		mut t := &core.UdpTransport{}
+		t.open(core.Target{ ip: s.ip, timeout: opts.timeout }) or { return blank }
+		udp[s.key] = t
+	}
+	mut t := udp[s.key] or { return blank }
+
+	msg := core.build_query(host.host, core.qtype_a) or { return blank }
+	reply, _ := t.query(msg) or { return blank }
+	resp := core.parse_response(reply) or { return blank }
+
+	chain := resp.cname_targets(reply) or { []string{} }
+	suffix_ok := requires && chain.any(it.ends_with(host.expect_cname_suffix))
+
+	addresses := resp.a_addresses()
+	if addresses.len == 0 {
+		// A provider that resolves fewer hosts is flagged, never favoured: the
+		// host stays in its report with no answer and no penalty.
+		return core.EdgeSample{
+			host: host.host
+			requires_suffix: requires
+			suffix_ok: suffix_ok
+		}
+	}
+
+	// The first address, because that is the one a client would have used.
+	answer := addresses[0]
+	connect_time := core.connect_ms('${answer}:443', core.edge_connect_timeout) or {
+		return core.EdgeSample{
+			host: host.host
+			answer: answer
+			requires_suffix: requires
+			suffix_ok: suffix_ok
+		}
+	}
+	return core.EdgeSample{
+		host: host.host
+		answer: answer
+		connect_ms: connect_time
+		requires_suffix: requires
+		suffix_ok: suffix_ok
+	}
 }
 
 // warm_domains stands in for the pinned Tranco set of docs/DATA.md, which is
@@ -467,12 +579,7 @@ fn query_name(step core.Step, cold_zone string) string {
 	return '${rand.string_from_set('abcdefghijklmnopqrstuvwxyz0123456789', 16)}.${cold_zone}'
 }
 
-// checked rejects an answer that is not a successful lookup.
-//
-// A resolver that refuses fast is not a fast resolver. Counting a SERVFAIL as a
-// latency sample would let a provider that answers nothing useful outrank one
-// that answers correctly.
-fn assemble(subjects []Subject, probes []string, opts Options, net core.NetInfo, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning) store.RunResult {
+fn assemble(subjects []Subject, probes []string, edge map[string]core.EdgePenalty, best_rtt ?f64, opts Options, net core.NetInfo, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning) store.RunResult {
 	weights := core.profiles[opts.profile] or { core.Weights{} }
 	expected := core.expected_samples(opts.rounds, warm_domains.len)
 
@@ -482,6 +589,7 @@ fn assemble(subjects []Subject, probes []string, opts Options, net core.NetInfo,
 			base: core.Metrics{
 				key: s.key
 				is_cache: s.is_cache
+				ecs_penalty_ms: median_penalty(edge, s.key)
 				offers_ipv6: net.ipv6
 				declared: s.declared
 			}
@@ -497,10 +605,10 @@ fn assemble(subjects []Subject, probes []string, opts Options, net core.NetInfo,
 		}
 	}
 
-	ranked := core.rank_providers(samples, none, weights, core.BootstrapSpec{ seed: opts.seed }) or {
+	ranked := core.rank_providers(samples, best_rtt, weights, core.BootstrapSpec{ seed: opts.seed }) or {
 		[]core.Ranked{}
 	}
-	bests := core.compute_bests(metrics_from(samples), none)
+	bests := core.compute_bests(metrics_from(samples), best_rtt)
 
 	mut results := []store.ProviderResult{cap: subjects.len}
 	for r in ranked {
@@ -518,6 +626,11 @@ fn assemble(subjects []Subject, probes []string, opts Options, net core.NetInfo,
 
 		mut reports := []store.ProbeReport{cap: probes.len}
 		for name in probes {
+			// The edge probe reports under `edge`, not under `probes`: it has an
+			// answer and a connect time per host, not a latency distribution.
+			if name == 'ecs' {
+				continue
+			}
 			reports << store.ProbeReport{
 				name: name
 				stats: core.compute_counted(subject.samples[name] or { []f64{} }, expected, subject.refused[name] or { 0 })
@@ -539,6 +652,7 @@ fn assemble(subjects []Subject, probes []string, opts Options, net core.NetInfo,
 			subscores: core.subscores(metrics, bests)
 			is_cache: subject.is_cache
 			probes: reports
+			edge: edge_report(edge, subject.key)
 			capabilities: store.Capabilities{
 				// dnssec_validating stays absent until the probe that
 				// establishes it lands in M2. Absent is not false.
@@ -590,15 +704,47 @@ fn assemble(subjects []Subject, probes []string, opts Options, net core.NetInfo,
 fn transports_used(probes []string) []string {
 	mut out := []string{}
 	for probe in probes {
-		name := match probe {
-			'tcp' { 'tcp' }
-			else { 'udp' }
+		names := match probe {
+			'tcp' { ['tcp'] }
+			// The edge probe asks over UDP and then connects over TCP, and the
+			// contract names transports rather than probes.
+			'ecs' { ['udp', 'tcp'] }
+			else { ['udp'] }
 		}
-		if name !in out {
-			out << name
+		for name in names {
+			if name !in out {
+				out << name
+			}
 		}
 	}
 	return out
+}
+
+// median_penalty is the figure the `edge` subscore divides by, absent for a
+// provider the edge probe did not reach.
+fn median_penalty(edge map[string]core.EdgePenalty, key string) ?f64 {
+	found := edge[key] or { return none }
+	return found.median_penalty_ms
+}
+
+// edge_report renders one provider's per-host detail for the output.
+fn edge_report(edge map[string]core.EdgePenalty, key string) store.Edge {
+	found := edge[key] or { return store.Edge{} }
+
+	mut hosts := []store.EdgeHost{cap: found.hosts.len}
+	for h in found.hosts {
+		hosts << store.EdgeHost{
+			host: h.host
+			answer: h.answer
+			connect_ms: h.connect_ms
+			penalty_ms: h.penalty_ms
+			stale: h.stale
+		}
+	}
+	return store.Edge{
+		median_penalty_ms: found.median_penalty_ms
+		hosts: hosts
+	}
 }
 
 fn metrics_from(samples []core.Samples) []core.Metrics {

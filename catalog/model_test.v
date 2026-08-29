@@ -6,7 +6,7 @@ module catalog
 fn test_the_embedded_catalog_loads() ! {
 	c := embedded()!
 
-	assert c.version == 4
+	assert c.version == 5
 	assert c.generated == '2026-08-29'
 	assert c.providers.len == 16
 }
@@ -270,4 +270,44 @@ fn test_a_provider_without_placeholders_is_not_marked() ! {
 	c := parse(minimal_provider)!
 
 	assert !c.providers[0].needs_config
+}
+
+// The edge probe is the reason the project exists, and it cannot run without
+// targets. A catalog that silently lost its [[cdn_host]] table would leave the
+// edge subscore null on every provider and look like a network problem.
+fn test_the_embedded_catalog_carries_cdn_hosts_for_the_edge_probe() ! {
+	c := embedded()!
+
+	assert c.cdn_hosts.len == 5
+	for h in c.cdn_hosts {
+		assert h.host != ''
+		assert h.cdn != ''
+		assert !h.host.starts_with('http')
+	}
+
+	akamai := c.cdn_hosts.filter(it.cdn == 'akamai')
+	assert akamai.len == 1
+	assert akamai[0].expect_cname_suffix == 'akamaiedge.net'
+}
+
+fn test_a_cdn_host_without_a_cdn_is_refused() {
+	// The cdn field is what the output attributes a penalty to. An entry that
+	// does not say which CDN it probes produces a number nobody can act on.
+	text := 'version = 1
+generated = "2026-01-01"
+
+[[provider]]
+key = "p"
+label = "P"
+udp4 = ["1.1.1.1"]
+homepage = "https://example.com"
+
+[[cdn_host]]
+host = "example.com"
+'
+	if _ := parse(text) {
+		assert false, 'expected an error'
+	} else {
+		assert err.msg().contains('does not say which CDN')
+	}
 }

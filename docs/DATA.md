@@ -194,7 +194,7 @@ convenience. A two-PoP CDN cannot expose a bad ECS decision; a several-hundred-e
 [[cdn_host]]
 host = "www.microsoft.com"
 cdn  = "akamai"
-expect_cname_suffix = "akadns.net"
+expect_cname_suffix = "akamaiedge.net"
 
 [[cdn_host]]
 host = "cdn.jsdelivr.net"
@@ -202,10 +202,21 @@ cdn  = "multi"
 expect_cname_suffix = ""
 ```
 
-CDN hostnames rot — companies get acquired, hostnames disappear. Each entry is health-checked
-at run start: if it fails to resolve, or the expected CNAME suffix is gone, it is marked
-`stale`, excluded from scoring, and reported. Better a visible gap than a silently wrong
-number.
+Five entries ship: `www.microsoft.com` (Akamai), `storage.googleapis.com` (Google),
+`assets.nflxext.com` (Netflix OpenConnect), `www.fastly.com` (Fastly) and `cdn.jsdelivr.net`
+(multi-CDN). Chains verified 2026-08-29.
+
+CDN hostnames rot: companies get acquired and hostnames disappear. An entry whose CNAME chain
+no longer ends in `expect_cname_suffix` is measuring some other CDN, so it is marked `stale`,
+excluded from scoring, and reported. Better a visible gap than a silently wrong number.
+
+**The check is run-wide, not per provider, and it uses the run's own answers rather than a
+separate lookup at start.** Both parts matter. A separate lookup would need a reference
+resolver, and every candidate for that job is either a resolver under test or the system
+resolver, which may itself be the thing distorting the answer. And one resolver answering
+oddly for a host is a fact about that resolver, which is precisely the signal this probe
+exists to catch: the entry has only rotted when the expected chain is gone for **every**
+provider in the run.
 
 Regional CDN hosts are an optional realism supplement (`--ecs-set global,regional`) and never
 affect the score.

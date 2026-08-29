@@ -173,3 +173,26 @@ fn test_only_an_encrypted_only_provider_explains_itself() {
 		assert err.msg().contains('no plaintext endpoint')
 	}
 }
+
+fn test_the_edge_probe_rides_two_transports() {
+	// The output contract names transports and not probes. `ecs` asks over UDP
+	// and then connects over TCP, so a run that requested only the edge probe
+	// still has to declare both.
+	assert transports_used(['ecs']) == ['udp', 'tcp']
+	assert transports_used(['warm', 'ecs']) == ['udp', 'tcp']
+	assert transports_used(['warm']) == ['udp']
+}
+
+fn test_the_edge_probe_is_refused_without_something_to_rank_against() {
+	// A provider is excluded on `warm` before any subscore is read, so an
+	// edge-only run would emit a table of unreachable rows each carrying an edge
+	// penalty nobody would ever see.
+	assert timed_probes(['warm', 'ecs'])! == ['warm']
+	assert timed_probes(['ecs', 'tcp'])! == ['tcp']
+
+	if kept := timed_probes(['ecs']) {
+		assert false, 'expected an error, got ${kept}'
+	} else {
+		assert err.msg().contains('needs a latency probe')
+	}
+}

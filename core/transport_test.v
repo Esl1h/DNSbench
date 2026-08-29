@@ -306,3 +306,47 @@ fn test_udp_query_is_bounded_by_the_timeout_not_by_the_datagram_count() ! {
 	// datagram count alone would have allowed.
 	assert elapsed < 3 * mock_timeout
 }
+
+// ── connect timing ───────────────────────────────────────────────────────────
+fn test_connect_ms_times_a_connection_that_succeeds() ! {
+	// A local listener, so the number is a floor rather than a measurement, but
+	// it establishes that the happy path returns a time and not an error.
+	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := listener.addr()!.port()!
+	defer {
+		listener.close() or {}
+	}
+
+	ms := connect_ms('127.0.0.1:${port}', 2 * time.second)!
+
+	assert ms >= 0.0
+	assert ms < 2000.0
+}
+
+fn test_connect_ms_fails_fast_on_a_refused_port() ! {
+	// A closed port answers with RST immediately. This must be an error and not
+	// a very fast connect: the edge probe would otherwise record a refusal as
+	// the best edge in the run and hand that provider a perfect score.
+	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := listener.addr()!.port()!
+	listener.close() or {}
+
+	if ms := connect_ms('127.0.0.1:${port}', 2 * time.second) {
+		assert false, 'expected an error, got ${ms} ms'
+	}
+}
+
+fn test_connect_ms_gives_up_at_the_budget() ! {
+	// 192.0.2.1 is TEST-NET-1: routable nowhere, so the SYN goes unanswered.
+	// V's dial_tcp has no connect timeout on the default build path, and the
+	// operating system's own is minutes long, so without the budget one bad
+	// address would stall a whole run.
+	sw := time.new_stopwatch()
+	if ms := connect_ms('192.0.2.1:443', 500 * time.millisecond) {
+		assert false, 'expected a timeout, got ${ms} ms'
+	}
+	elapsed := sw.elapsed().milliseconds()
+
+	assert elapsed >= 500
+	assert elapsed < 1500
+}
