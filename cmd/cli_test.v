@@ -1,5 +1,6 @@
 module main
 
+import catalog
 import core
 import store
 
@@ -139,5 +140,36 @@ fn test_every_other_probe_asks_the_planned_name() {
 			domain: 'wikipedia.org'
 		}
 		assert query_name(step, 'probe.dnsbench.esli.blog') == 'wikipedia.org'
+	}
+}
+
+// A provider with no plaintext endpoint used to disappear from the table with
+// no line saying why, while a provider needing configuration got a warning.
+// Mullvad is the entry that found it: DoT and DoH only, nothing to measure over
+// UDP until M2.
+fn test_an_encrypted_only_provider_is_reported_not_dropped() ! {
+	cat := catalog.embedded()!
+	mut warnings := []store.Warning{}
+	subjects := select_subjects(cat, Options{}, core.NetInfo{}, mut warnings)!
+
+	assert subjects.filter(it.key == 'mullvad').len == 0
+	skipped := warnings.filter(it.key == 'mullvad')
+	assert skipped.len == 1
+	assert skipped[0].message.contains('no plaintext endpoint')
+}
+
+// Asking for only that provider is still an error, because there is nothing to
+// measure, but the error has to say which of the two failures happened: the key
+// matched and was skipped, it did not fail to match.
+fn test_only_an_encrypted_only_provider_explains_itself() {
+	cat := catalog.embedded() or { panic(err) }
+	mut warnings := []store.Warning{}
+	if _ := select_subjects(cat, Options{
+		only: ['mullvad']
+	}, core.NetInfo{}, mut warnings) {
+		assert false, 'expected an error'
+	} else {
+		assert err.msg().contains('nothing measurable')
+		assert err.msg().contains('no plaintext endpoint')
 	}
 }

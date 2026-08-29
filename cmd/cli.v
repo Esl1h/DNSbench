@@ -289,6 +289,16 @@ fn select_subjects(cat catalog.Catalog, opts Options, net core.NetInfo, mut warn
 			continue
 		}
 		if p.udp4.len == 0 {
+			// Encrypted-only entries are not failures, and must not read as
+			// absence either. Mullvad publishes DoT and DoH and no usable
+			// plaintext address, so there is nothing here to measure until the
+			// encrypted transports land; a row that simply vanishes reads as a
+			// tool that forgot the provider.
+			warnings << store.Warning{
+				level: 'info'
+				key: p.key
+				message: '${p.key} skipped: no plaintext endpoint, DoT and DoH only'
+			}
 			continue
 		}
 		out << Subject{
@@ -317,6 +327,11 @@ fn select_subjects(cat catalog.Catalog, opts Options, net core.NetInfo, mut warn
 	}
 
 	if opts.only.len > 0 && out.len == 0 {
+		// A key that matched and was then skipped is a different failure from a
+		// key that matched nothing, and the reason is already in the warnings.
+		if warnings.len > 0 {
+			return error('--only selected nothing measurable: ${warnings.map(it.message).join('; ')}')
+		}
 		return error('--only matched no provider: ${opts.only.join(', ')}')
 	}
 	return out

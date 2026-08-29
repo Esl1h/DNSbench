@@ -114,6 +114,10 @@ comparability and `history` must be able to detect it.
   change reported numbers
 
 ### Fixed
+- `cmd/cli.v`: a provider with no plaintext endpoint was dropped from the run in silence,
+  while a provider needing configuration got a warning. Both now say why they are absent, and
+  `--only` on such a key reports that the key matched and was skipped rather than that it
+  matched nothing
 - `data/providers.toml`: `mullvad` and `mullvad-base` carried `udp4` and `udp6` addresses
   that are not plaintext endpoints. Mullvad's own help page, already the `homepage` of both
   entries, says those IPs "can only be used with DNS resolvers that support DoH or DoT, not
