@@ -263,7 +263,7 @@ fn test_the_golden_file_matches_what_the_emitter_produces() ! {
 fn test_the_csv_has_one_row_per_provider_and_probe() ! {
 	rows := sample_run().to_csv().trim_space().split('\n')
 
-	assert rows[0] == 'provider,probe,n,expected,refused,p50,p95,max,jitter,loss,edge_penalty,score'
+	assert rows[0] == 'provider,probe,n,expected,refused,p50,p95,max,jitter,loss,edge_penalty,edge_misrouted,score'
 	// two probes for cloudflare, one for the unreachable provider
 	assert rows.len == 4
 	assert rows[1].starts_with('cloudflare,warm,5,5,')
@@ -274,7 +274,8 @@ fn test_the_csv_leaves_an_absent_figure_empty_rather_than_zero() ! {
 	rows := sample_run().to_csv().trim_space().split('\n')
 	dead := rows[3].split(',')
 
-	// provider,probe,n,expected,refused,p50,p95,max,jitter,loss,edge_penalty,score
+	// provider,probe,n,expected,refused,p50,p95,max,jitter,loss,edge_penalty,
+	// edge_misrouted,score
 	assert dead[4] == '0'
 	assert dead[5] == ''
 	assert dead[6] == ''
@@ -282,7 +283,7 @@ fn test_the_csv_leaves_an_absent_figure_empty_rather_than_zero() ! {
 	assert dead[8] == ''
 	assert dead[9] == '100.0'
 	// No score: the provider is excluded from the ranking.
-	assert dead[11] == ''
+	assert dead[12] == ''
 }
 
 // ── history ──────────────────────────────────────────────────────────────────

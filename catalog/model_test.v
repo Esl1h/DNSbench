@@ -6,7 +6,7 @@ module catalog
 fn test_the_embedded_catalog_loads() ! {
 	c := embedded()!
 
-	assert c.version == 5
+	assert c.version == 6
 	assert c.generated == '2026-08-29'
 	assert c.providers.len == 16
 }
@@ -278,16 +278,26 @@ fn test_a_provider_without_placeholders_is_not_marked() ! {
 fn test_the_embedded_catalog_carries_cdn_hosts_for_the_edge_probe() ! {
 	c := embedded()!
 
-	assert c.cdn_hosts.len == 5
+	assert c.cdn_hosts.len == 9
 	for h in c.cdn_hosts {
 		assert h.host != ''
 		assert h.cdn != ''
 		assert !h.host.starts_with('http')
 	}
 
-	akamai := c.cdn_hosts.filter(it.cdn == 'akamai')
-	assert akamai.len == 1
-	assert akamai[0].expect_cname_suffix == 'akamaiedge.net'
+	// Four CDN families, so that one operator's routing quirk cannot carry the
+	// median on its own. docs/DATA.md § CDN hosts for the edge probe.
+	mut families := map[string]int{}
+	for h in c.cdn_hosts {
+		families[h.cdn]++
+	}
+	assert families.len == 4
+	for _, count in families {
+		assert count >= 2
+		// No family may hold half the set, or the median becomes that family's
+		// opinion rather than the run's.
+		assert count * 2 <= c.cdn_hosts.len
+	}
 }
 
 fn test_a_cdn_host_without_a_cdn_is_refused() {

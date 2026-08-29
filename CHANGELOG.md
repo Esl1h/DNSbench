@@ -10,6 +10,9 @@ comparability and `history` must be able to detect it.
 ## [Unreleased]
 
 ### Added
+- `edge.misrouted` and `edge.measured`: how many CDN hosts came back more than 25 ms adrift,
+  out of how many produced a penalty at all. In JSON, in the CSV, in the history lines and as
+  a `MIS` column. It informs and does not rank; the `edge` subscore still reads the median
 - `core/edge.v`: the ECS probe, the metric the project exists for. Each CDN host is resolved
   through every provider and a TCP connect to the returned address is timed; the baseline for
   a host is the best connect any provider achieved in the same run, so the probe calibrates
@@ -99,6 +102,13 @@ comparability and `history` must be able to detect it.
   the link cannot carry
 
 ### Changed
+- The edge probe's host set goes from five entries to nine, across four CDN families, and
+  drops every anycast entry including `assets.nflxext.com`, `storage.googleapis.com` and
+  `cdn.jsdelivr.net`. An anycast CDN chooses its edge by BGP after the packet leaves, so no
+  resolver can influence it: those entries scored an identical zero for every provider and
+  only dragged the median down. With the old set one resolver's median came out at 192.4 ms
+  in one run and 1.4 ms in the next; with the new one, three consecutive runs gave 215, 203
+  and 218 ms. Catalog `version` 5 to 6
 - Catalog `version` 4 to 5: the `[[cdn_host]]` table is new, so a run against version 4 has
   no edge column and is not comparable
 - `docs/DATA.md`: the CDN example claimed `www.microsoft.com` ends in `akadns.net`. Verified

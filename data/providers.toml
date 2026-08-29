@@ -5,7 +5,7 @@
 # Tag vocabulary is a closed set — see docs/DATA.md. Declared-only tags are never
 # allowed to contribute to a measured subscore.
 
-version = 5
+version = 6
 generated = "2026-08-29"
 
 # ── NextDNS ──────────────────────────────────────────────────────────────────
@@ -189,16 +189,28 @@ homepage = "https://www.joindns4.eu/for-public"
 
 # ── CDN hosts for the edge probe ─────────────────────────────────────────────
 # Targets for `--probes ecs`. The probe resolves each host through every provider
-# and times a TCP connect to the address it got back, so the entries have to be
-# CDNs with enough points of presence that a bad ECS decision is visible as
-# distance. A two-PoP CDN cannot expose one. docs/METHODOLOGY.md § ecs.
+# and times a TCP connect to the address it got back, so an entry only earns its
+# place if the address it returns actually depends on which resolver asked.
+#
+# That rules out anycast CDNs, and it rules them out for a reason the general
+# advice about "many points of presence" does not cover: on an anycast CDN the
+# edge is chosen by BGP after the packet leaves, so no resolver can influence it
+# and every provider scores an identical zero. Measured from São Paulo on
+# 2026-08-29, comparing the answer from 1.1.1.1 against the answer from an EU
+# resolver and connecting to both, the difference was 0.3 ms for cdn.sstatic.net,
+# 0.9 ms for www.linkedin.com, 1.6 ms for files.pythonhosted.org and 2.7 ms for
+# github.githubassets.com. Those entries cannot express a bad ECS decision. Every
+# host below moved by more than 180 ms in the same test.
+#
+# Four CDN families, so that one operator's routing quirk cannot carry the median:
+# Akamai, Fastly, CloudFront and Google.
 #
 # expect_cname_suffix is the health check: if the chain no longer ends there, the
 # entry is measuring something other than the CDN it was chosen for and is marked
-# stale rather than quietly contributing a wrong number.
+# stale rather than quietly contributing a wrong number. Empty means the host
+# answers with addresses directly and there is no chain to check.
 #
-# Chains verified 2026-08-29 against 1.1.1.1, 8.8.8.8, 9.9.9.9 and 208.67.222.222
-# from São Paulo.
+# Chains and deltas verified 2026-08-29.
 
 [[cdn_host]]
 host = "www.microsoft.com"
@@ -206,14 +218,14 @@ cdn  = "akamai"
 expect_cname_suffix = "akamaiedge.net"
 
 [[cdn_host]]
-host = "storage.googleapis.com"
-cdn  = "google"
-expect_cname_suffix = ""
+host = "www.apple.com"
+cdn  = "akamai"
+expect_cname_suffix = "akamaiedge.net"
 
 [[cdn_host]]
-host = "assets.nflxext.com"
-cdn  = "netflix"
-expect_cname_suffix = ""
+host = "assets.msn.com"
+cdn  = "akamai"
+expect_cname_suffix = "akamai.net"
 
 [[cdn_host]]
 host = "www.fastly.com"
@@ -221,6 +233,26 @@ cdn  = "fastly"
 expect_cname_suffix = "fastly.net"
 
 [[cdn_host]]
-host = "cdn.jsdelivr.net"
-cdn  = "multi"
+host = "deb.debian.org"
+cdn  = "fastly"
+expect_cname_suffix = "fastlydns.net"
+
+[[cdn_host]]
+host = "d1.awsstatic.com"
+cdn  = "cloudfront"
+expect_cname_suffix = ""
+
+[[cdn_host]]
+host = "download.docker.com"
+cdn  = "cloudfront"
+expect_cname_suffix = "cloudfront.net"
+
+[[cdn_host]]
+host = "dl.google.com"
+cdn  = "google"
+expect_cname_suffix = ""
+
+[[cdn_host]]
+host = "www.gstatic.com"
+cdn  = "google"
 expect_cname_suffix = ""

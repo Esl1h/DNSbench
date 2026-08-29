@@ -146,3 +146,47 @@ fn test_the_median_is_nearest_rank_like_every_other_percentile() {
 
 	assert got['b'].median_penalty_ms? == 5.0
 }
+
+fn test_the_misrouted_count_is_the_stable_half_of_the_report() {
+	// The median is decided by whether the count crossed half the set, and with
+	// bimodal penalties that is a coin flip. Here `b` is 200 ms adrift on two of
+	// four hosts, so the median sits at 0 and says nothing, while the count says
+	// two. Both are published, and only the median feeds the score.
+	got := edge_penalties({
+		'a': [sample('h1', 10.0), sample('h2', 10.0), sample('h3', 10.0), sample('h4', 10.0)]
+		'b': [sample('h1', 10.0), sample('h2', 12.0), sample('h3', 210.0), sample('h4', 215.0)]
+	})
+
+	assert got['b'].median_penalty_ms? == 2.0
+	assert got['b'].misrouted == 2
+	assert got['b'].measured == 4
+	assert got['a'].misrouted == 0
+	assert got['a'].measured == 4
+}
+
+fn test_the_threshold_is_the_boundary_of_the_red_band() {
+	// docs/TUI.md: green to 5 ms, yellow to 25, red beyond. A host exactly at 25
+	// is the last yellow one and is not misrouted; ordinary jitter has to stay
+	// on the near side of this line or the count means nothing.
+	got := edge_penalties({
+		'a': [sample('h1', 10.0), sample('h2', 10.0)]
+		'b': [sample('h1', 35.0), sample('h2', 35.1)]
+	})
+
+	assert got['b'].hosts[0].penalty_ms? == 25.0
+	assert got['b'].hosts[1].penalty_ms? == 25.1
+	assert got['b'].misrouted == 1
+}
+
+fn test_a_provider_that_measured_nothing_counts_nothing() {
+	// Zero out of zero, not zero out of the set: the provider did not come back
+	// clean, it did not come back.
+	got := edge_penalties({
+		'a': [sample('h1', 10.0)]
+		'b': [sample('h1', none)]
+	})
+
+	assert got['b'].misrouted == 0
+	assert got['b'].measured == 0
+	assert got['b'].median_penalty_ms == none
+}

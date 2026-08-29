@@ -147,15 +147,32 @@ edge is losing.
 4. For each host, find the minimum connect time achieved by **any** provider in this run.
 5. A provider's ECS penalty for that host is `its_connect_time − best_connect_time`.
 6. Its `ecs_penalty` is the median penalty across hosts.
+7. Alongside it, report how many hosts came back more than 25 ms adrift, out of how many
+   produced a penalty at all. Only the median feeds the score.
 
 **The probe is self-calibrating.** The baseline comes from the run itself, not from
 geolocation, not from an IP database, not from a country code. It is equally valid in São
 Paulo, Lagos and Helsinki with zero geo code.
 
-**Host selection.** Use globally distributed, many-PoP CDNs. This is correctness, not
-convenience: a CDN with two PoPs cannot expose a bad ECS decision; one with hundreds can.
-Akamai, Cloudflare, Fastly, Google and Netflix OpenConnect are the strongest ECS probes
-anywhere on Earth. Regional CDNs are an optional realism supplement and never affect scoring.
+**Why the count is published next to the median.** Penalties are bimodal. A resolver either
+gets you to the right continent or it does not, so the per-host figures cluster near zero and
+near two hundred with almost nothing in between, and the median is then decided by whether the
+count crossed half the set. Measured with a five-host set, one resolver's median came out at
+192.4 ms in one run and 1.4 ms in the next, from per-host figures that had barely moved: three
+hosts misrouted in the first run, two in the second. The count does not flip like that. Both
+are reported; the score reads the median.
+
+**Host selection.** Use globally distributed CDNs that steer by DNS. Many points of presence
+is the usual advice and it is not sufficient: an anycast CDN can have hundreds of edges and
+still be useless here, because the edge is chosen by BGP after the packet leaves and no
+resolver can influence it, so every provider scores an identical zero and the entry only drags
+the median down. Measured from São Paulo, comparing a near resolver's answer against an EU
+resolver's and connecting to both, the gap was 0.3 ms for `cdn.sstatic.net`, 0.9 ms for
+`www.linkedin.com`, 1.6 ms for `files.pythonhosted.org` and 2.7 ms for
+`github.githubassets.com`, against more than 180 ms for every DNS-steered host tested. Spread
+the set across CDN operators, so that one operator's routing quirk cannot carry the median,
+and give no operator half of it. Regional CDNs are an optional realism supplement and never
+affect scoring.
 
 **Confounders we control for**
 

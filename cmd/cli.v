@@ -743,6 +743,8 @@ fn edge_report(edge map[string]core.EdgePenalty, key string) store.Edge {
 	}
 	return store.Edge{
 		median_penalty_ms: found.median_penalty_ms
+		misrouted: found.misrouted
+		measured: found.measured
 		hosts: hosts
 	}
 }

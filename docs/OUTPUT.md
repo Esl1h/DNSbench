@@ -69,6 +69,8 @@ Three formats, one guarantee: **anything that consumes `--json` will keep workin
       },
       "edge": {
         "median_penalty_ms": 3.9,
+        "misrouted": 0,
+        "measured": 9,
         "hosts": [
           { "host": "www.microsoft.com", "answer": "23.55.0.0",
             "connect_ms": 15.1, "penalty_ms": 3.9, "stale": false },
@@ -107,6 +109,10 @@ Three formats, one guarantee: **anything that consumes `--json` will keep workin
   that drew no answer at all. A provider can therefore show `loss` of 0.0 and still be
   excluded, which is the honest reading of a server that replies to everything and
   resolves nothing.
+- `edge.misrouted`, out of `edge.measured`, is how many CDN hosts came back more than 25 ms
+  adrift. It is reported because `median_penalty_ms` alone is a fragile summary of a bimodal
+  set: see METHODOLOGY § Why the count is published next to the median. It informs and does
+  not rank; the `edge` subscore reads the median.
 - `mean` exists in JSON and appears in no human-facing output. See METHODOLOGY.
 - `p50`, `p95`, `max`, `mean` and `jitter` are `null` when there was no sample to derive them
   from: all five when `n` is 0, and `jitter` also when `n` is 1, where the sample standard
@@ -143,8 +149,8 @@ every golden file in `testdata/`.
 {"ts":"2026-08-28T09:14:02-03:00","asn":"AS27699","ifname":"wlan0","ipv6":false,
  "provider":"quad9-ecs","probe":"warm","n":40,"refused":0,"p50":16.9,"p95":68.1,
  "jitter":14.2,
- "loss":0.0,"edge_penalty":11.4,"score":58.7,"profile":"balanced",
- "catalog_version":4,"domains":"tranco:K2XVW+sa","cold_mode":"own","tool":"0.1.0"}
+ "loss":0.0,"edge_penalty":11.4,"edge_misrouted":1,"score":58.7,"profile":"balanced",
+ "catalog_version":6,"domains":"tranco:K2XVW+sa","cold_mode":"own","tool":"0.1.0"}
 ```
 
 **Not SQLite**, deliberately. V's `db.sqlite` requires `sqlite3.h` at build time, which means
@@ -176,8 +182,8 @@ Flat, one row per (provider, probe). For spreadsheets and for people who will no
 `jq`. Same numbers, no nesting, header row included.
 
 ```
-provider,probe,n,expected,refused,p50,p95,max,jitter,loss,edge_penalty,score
-nextdns,warm,40,40,0,15.0,24.8,32.8,3.1,0.0,3.9,92.4
+provider,probe,n,expected,refused,p50,p95,max,jitter,loss,edge_penalty,edge_misrouted,score
+nextdns,warm,40,40,0,15.0,24.8,32.8,3.1,0.0,3.9,0,92.4
 ```
 
 ## `--format markdown`

@@ -98,7 +98,11 @@ pub:
 pub struct Edge {
 pub:
 	median_penalty_ms ?f64
-	hosts             []EdgeHost
+	// misrouted, out of measured, is how many hosts came back far enough adrift
+	// to have been sent to the wrong region. It informs and does not rank.
+	misrouted int
+	measured  int
+	hosts     []EdgeHost
 }
 
 pub struct Capabilities {
@@ -284,6 +288,8 @@ fn provider_json(p ProviderResult) json2.Any {
 	}
 	m['edge'] = json2.Any({
 		'median_penalty_ms': opt_any(p.edge.median_penalty_ms)
+		'misrouted':         json2.Any(p.edge.misrouted)
+		'measured':          json2.Any(p.edge.measured)
 		'hosts':             json2.Any(hosts)
 	})
 
@@ -371,13 +377,13 @@ fn round1(v f64) f64 {
 // spreadsheet reads as no data rather than as zero.
 pub fn (r RunResult) to_csv() string {
 	mut out := [
-		'provider,probe,n,expected,refused,p50,p95,max,jitter,loss,edge_penalty,score',
+		'provider,probe,n,expected,refused,p50,p95,max,jitter,loss,edge_penalty,edge_misrouted,score',
 	]
 	for p in r.results {
 		score := if p.ranked.excluded != none { '' } else { fmt1(p.ranked.score) }
 		penalty := csv_opt(p.edge.median_penalty_ms)
 		for probe in p.probes {
-			out << '${p.key},${probe.name},${probe.stats.n},${probe.stats.expected},' + '${probe.stats.refused},${csv_opt(probe.stats.p50)},${csv_opt(probe.stats.p95)},${csv_opt(probe.stats.max)},' + '${csv_opt(probe.stats.jitter)},${fmt1(probe.stats.loss)},${penalty},${score}'
+			out << '${p.key},${probe.name},${probe.stats.n},${probe.stats.expected},' + '${probe.stats.refused},${csv_opt(probe.stats.p50)},${csv_opt(probe.stats.p95)},${csv_opt(probe.stats.max)},' + '${csv_opt(probe.stats.jitter)},${fmt1(probe.stats.loss)},${penalty},${p.edge.misrouted},${score}'
 		}
 	}
 	return out.join('\n') + '\n'
@@ -468,7 +474,7 @@ pub fn (r RunResult) to_table() string {
 		'   INTERRUPTED, results are partial'
 	}
 	out << ''
-	out << '  #  PROVIDER              SCORE    p50    p95    JIT   LOSS   EDGE   FLAGS'
+	out << '  #  PROVIDER              SCORE    p50    p95    JIT   LOSS   EDGE   MIS  FLAGS'
 	out << '  ' + '-'.repeat(76)
 
 	mut last_tier := 0
@@ -523,7 +529,7 @@ fn row_for(p ProviderResult, rank string) string {
 		flags << '~${d}'
 	}
 
-	return '${rank}  ${p.label:-20s}  ${score}  ' + '${cell(warm.p50)}  ${cell(warm.p95)}  ' + '${cell(warm.jitter)}  ${warm.loss:5.1f}%  ' + '${cell(p.edge.median_penalty_ms)}  ${flags.join(' ')}'
+	return '${rank}  ${p.label:-20s}  ${score}  ' + '${cell(warm.p50)}  ${cell(warm.p95)}  ' + '${cell(warm.jitter)}  ${warm.loss:5.1f}%  ' + '${cell(p.edge.median_penalty_ms)}  ${misrouted_cell(p.edge):4s}  ${flags.join(' ')}'
 }
 
 fn probe_named(p ProviderResult, name string) core.Stats {
@@ -533,6 +539,16 @@ fn probe_named(p ProviderResult, name string) core.Stats {
 		}
 	}
 	return core.Stats{}
+}
+
+// misrouted_cell prints the count as a fraction of what was measured, because
+// 3 on its own is unreadable without knowing whether the set held four hosts or
+// forty. A run with no edge probe shows nothing rather than 0/0.
+fn misrouted_cell(e Edge) string {
+	if e.measured == 0 {
+		return '-'
+	}
+	return '${e.misrouted}/${e.measured}'
 }
 
 // cell prints a dash where there is no figure. A zero would be the best value
@@ -561,8 +577,8 @@ pub fn (r RunResult) to_markdown() string {
 	out << 'profile ${r.run.profile} rounds=${r.run.rounds} complete=${r.run.complete} started=${r.run.started_at}'
 	out << '-->'
 	out << ''
-	out << '| # | Provider | Score | p50 | p95 | Jitter | Loss | Edge | Flags |'
-	out << '|---|---|---:|---:|---:|---:|---:|---:|---|'
+	out << '| # | Provider | Score | p50 | p95 | Jitter | Loss | Edge | Misrouted | Flags |'
+	out << '|---|---|---:|---:|---:|---:|---:|---:|---:|---|'
 
 	for p in r.results {
 		warm := probe_named(p, 'warm')
@@ -577,7 +593,7 @@ pub fn (r RunResult) to_markdown() string {
 			flags << '~${d}'
 		}
 
-		out << '| ${rank} | ${p.label} | ${score} | ${md_cell(warm.p50)} | ${md_cell(warm.p95)} |' + ' ${md_cell(warm.jitter)} | ${warm.loss:.1f}% | ${md_cell(p.edge.median_penalty_ms)} |' + ' ${flags.join(', ')} |'
+		out << '| ${rank} | ${p.label} | ${score} | ${md_cell(warm.p50)} | ${md_cell(warm.p95)} |' + ' ${md_cell(warm.jitter)} | ${warm.loss:.1f}% | ${md_cell(p.edge.median_penalty_ms)} | ${misrouted_cell(p.edge)} |' + ' ${flags.join(', ')} |'
 	}
 
 	out << ''

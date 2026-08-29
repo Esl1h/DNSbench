@@ -33,9 +33,10 @@ pub:
 	jitter  ?f64
 	loss    f64
 
-	edge_penalty ?f64
-	score        ?f64
-	profile      string
+	edge_penalty   ?f64
+	edge_misrouted int
+	score          ?f64
+	profile        string
 
 	catalog_version int
 	domains         string
@@ -67,6 +68,7 @@ pub fn (r RunResult) lines() []Line {
 				jitter: probe.stats.jitter
 				loss: probe.stats.loss
 				edge_penalty: p.edge.median_penalty_ms
+				edge_misrouted: p.edge.misrouted
 				score: score
 				profile: r.run.profile
 				catalog_version: r.datasets.catalog.version
@@ -109,6 +111,7 @@ pub fn (l Line) encode() string {
 	m['jitter'] = opt_any(l.jitter)
 	m['loss'] = round1(l.loss)
 	m['edge_penalty'] = opt_any(l.edge_penalty)
+	m['edge_misrouted'] = l.edge_misrouted
 	m['score'] = opt_any(l.score)
 	m['profile'] = l.profile
 	m['catalog_version'] = l.catalog_version

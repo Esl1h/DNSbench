@@ -202,9 +202,13 @@ cdn  = "multi"
 expect_cname_suffix = ""
 ```
 
-Five entries ship: `www.microsoft.com` (Akamai), `storage.googleapis.com` (Google),
-`assets.nflxext.com` (Netflix OpenConnect), `www.fastly.com` (Fastly) and `cdn.jsdelivr.net`
-(multi-CDN). Chains verified 2026-08-29.
+Nine entries ship, across four CDN families so that no operator holds half the set: Akamai
+(`www.microsoft.com`, `www.apple.com`, `assets.msn.com`), Fastly (`www.fastly.com`,
+`deb.debian.org`), CloudFront (`d1.awsstatic.com`, `download.docker.com`) and Google
+(`dl.google.com`, `www.gstatic.com`). Every one of them was verified to move by more than
+180 ms between a near resolver's answer and a distant one; anycast hosts, which cannot move at
+all, are excluded on the grounds set out in METHODOLOGY § Host selection. Chains and deltas
+verified 2026-08-29.
 
 CDN hostnames rot: companies get acquired and hostnames disappear. An entry whose CNAME chain
 no longer ends in `expect_cname_suffix` is measuring some other CDN, so it is marked `stale`,

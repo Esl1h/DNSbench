@@ -47,14 +47,31 @@ pub:
 	stale      bool
 }
 
-// EdgePenalty is a provider's whole edge result.
-pub struct EdgePenalty {
+// edge_misrouted_ms is the penalty above which a host counts as misrouted.
+//
+// It is the boundary of the red band in docs/TUI.md: green to 5 ms, yellow to
+// 25, red beyond. Twenty-five milliseconds is more than a whole continent's
+// worth of good routing and is not reachable by ordinary jitter.
+pub const edge_misrouted_ms = 25.0
 
-	// median_penalty_ms is the median across hosts, by nearest rank, matching
-	// every other percentile the tool reports. Absent when no host produced a
-	// penalty at all, which is not the same as a penalty of zero.
+// EdgePenalty is a provider's whole edge result.
+//
+// median_penalty_ms is the median across hosts, by nearest rank, matching every
+// other percentile the tool reports, and absent when no host produced a penalty
+// at all, which is not the same as a penalty of zero.
+//
+// misrouted is how many of `measured` hosts came back more than
+// edge_misrouted_ms adrift. It is published beside the median because the two
+// answer different questions and the median alone is a fragile answer to this
+// one: penalties are bimodal, since a resolver either gets you to the right
+// continent or it does not, so the per-host figures cluster near 0 and near 200
+// and the median is decided by whether the count crossed half the set. The
+// count does not flip. It informs and does not rank; the score reads the median.
+pub struct EdgePenalty {
 pub:
 	median_penalty_ms ?f64
+	misrouted         int
+	measured          int
 	hosts             []EdgeHostPenalty
 }
 
@@ -95,9 +112,18 @@ pub fn edge_penalties(samples map[string][]EdgeSample) map[string]EdgePenalty {
 			}
 		}
 
+		mut misrouted := 0
+		for value in penalties {
+			if value > edge_misrouted_ms {
+				misrouted++
+			}
+		}
+
 		penalties.sort()
 		out[key] = EdgePenalty{
 			median_penalty_ms: percentile(penalties, 50)
+			misrouted: misrouted
+			measured: penalties.len
 			hosts: hosts
 		}
 	}

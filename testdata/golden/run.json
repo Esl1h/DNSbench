@@ -98,6 +98,8 @@
             },
             "edge": {
                 "median_penalty_ms": 3.9,
+                "misrouted": 0,
+                "measured": 0,
                 "hosts": [
                     {
                         "host": "www.microsoft.com",
@@ -170,6 +172,8 @@
                 },
                 "edge": {
                     "median_penalty_ms": null,
+                    "misrouted": 0,
+                    "measured": 0,
                     "hosts": [
                         ]
                     },

@@ -358,6 +358,16 @@
                 "null"
               ]
             },
+            "misrouted": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "hosts, out of measured, whose penalty exceeded the misrouted threshold. Reported beside the median because penalties are bimodal and the median flips on the count crossing half the set."
+            },
+            "measured": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "hosts that produced a penalty at all, so misrouted can be read as a fraction."
+            },
             "hosts": {
               "type": "array",
               "items": {
