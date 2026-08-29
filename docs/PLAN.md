@@ -98,9 +98,11 @@ is. Without it the run refuses and says why, per METHODOLOGY § Fail loudly on i
   being the pinned Tranco set. Generating the real one is a release task; see DATA § Tranco.
 - **ASN and region.** Both stubbed, so every run reports `region: global`. ARCHITECTURE
   § Region detection describes the cascade; nothing implements it.
-- **The cold-probe zone.** Not yet delegated. Until it is, `--probes cold` is skipped with a
-  warning rather than falling back to something impolite. The records to publish and the
-  verification commands are in DATA § Setting the zone up.
+- **The cold-probe zone.** Live. `probe.dnsbench.esli.blog` is delegated to Bunny DNS, signed
+  with algorithm 13, and answers a fresh random label with `192.0.2.1` at a TTL of 60. `delv`
+  validates it from the root. The first real run put Cloudflare sixth on `cold`, which is the
+  evidence the host choice was neutral. Pointing `--cold-zone` at your own zone is still
+  supported; DATA § Setting the zone up has the records and the verification commands.
 
 ## Phases
 
