@@ -5,7 +5,7 @@
 # Tag vocabulary is a closed set — see docs/DATA.md. Declared-only tags are never
 # allowed to contribute to a measured subscore.
 
-version = 6
+version = 7
 generated = "2026-08-29"
 
 # ── NextDNS ──────────────────────────────────────────────────────────────────
@@ -114,6 +114,8 @@ homepage = "https://adguard-dns.io/en/public-dns.html"
 [[provider]]
 key      = "mullvad"
 label    = "Mullvad"
+dot4     = ["194.242.2.2"]
+dot6     = ["2a07:e340::2"]
 dot      = "dns.mullvad.net"
 doh      = "https://dns.mullvad.net/dns-query"
 tags     = ["dnssec", "nolog", "nofilter", "audited"]
@@ -123,6 +125,8 @@ notes    = "Encrypted only. 194.242.2.2 answers on port 53, but REFUSED to every
 [[provider]]
 key      = "mullvad-base"
 label    = "Mullvad (base)"
+dot4     = ["194.242.2.4"]
+dot6     = ["2a07:e340::4"]
 dot      = "base.dns.mullvad.net"
 doh      = "https://base.dns.mullvad.net/dns-query"
 tags     = ["dnssec", "nolog", "ads", "malware", "audited"]

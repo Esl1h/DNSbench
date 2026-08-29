@@ -6,7 +6,7 @@ module catalog
 fn test_the_embedded_catalog_loads() ! {
 	c := embedded()!
 
-	assert c.version == 6
+	assert c.version == 7
 	assert c.generated == '2026-08-29'
 	assert c.providers.len == 16
 }
@@ -27,7 +27,37 @@ fn test_mullvad_carries_no_plaintext_endpoint() ! {
 		assert p.udp6.len == 0
 		assert p.dot != ''
 		assert p.doh != ''
+		// The same addresses that refuse on 53 do serve DoT on 853, so they are
+		// carried as what they are rather than dropped entirely.
+		assert p.dot4.len == 1
+		assert p.dot6.len == 1
+		assert p.dot_address() == p.dot4[0]
 	}
+}
+
+fn test_dot_falls_back_to_the_plaintext_address() ! {
+	// For most providers the encrypted endpoint is the same machine on another
+	// port, and repeating the address in the catalog would be a second copy to
+	// keep in step with the first.
+	c := embedded()!
+
+	for p in c.providers {
+		if p.dot == '' || p.dot4.len > 0 || p.udp4.len == 0 {
+			continue
+		}
+		assert p.dot_address() == p.udp4[0]
+	}
+}
+
+fn test_a_provider_with_no_dot_hostname_has_no_dot_address() {
+	// An address alone is not a DoT endpoint: without a name to verify the
+	// certificate against there is nothing to connect to safely.
+	p := Provider{
+		key: 'p'
+		udp4: ['1.1.1.1']
+	}
+
+	assert p.dot_address() == ''
 }
 
 fn test_every_embedded_provider_is_probeable_and_documented() ! {

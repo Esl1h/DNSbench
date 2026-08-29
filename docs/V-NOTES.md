@@ -404,3 +404,35 @@ v fmt -verify core/     # what CI runs; make fmt rewrites and can never fail
 v vet core/
 v -stats test core/     # per-test names and assert counts
 ```
+
+## SIGPIPE kills a network run with no output
+
+V does not mask `SIGPIPE`, and neither does the TLS layer under `net.ssl`. Writing to a socket
+whose peer has already closed it therefore terminates the process on the spot, with exit status
+141 and nothing printed, rather than returning an error the caller can handle.
+
+This is not theoretical for this tool. `dot_warm` holds one TLS connection per provider open
+across the whole interleaved plan, so each connection sits idle while every other provider
+takes its turn, and a DoT server is free to close an idle connection. The first run of the DoT
+probe against three providers died this way part-way through, having printed nothing at all.
+
+```v
+// in main(), before anything opens a socket
+os.signal_ignore(.pipe)
+```
+
+With that in place the write returns an error, which the transport already reports, and the
+caller can reconnect. `os.signal_ignore` is variadic and takes `os.Signal` values, from
+`vlib/os/signal.c.v`.
+
+## net.dial_tcp has no connect timeout on the default build
+
+`net.dial_tcp` performs a blocking `connect(2)`. The non-blocking path with a five-second
+deadline exists in `vlib/net/tcp.c.v` but is behind `$if net_nonblocking_sockets ?`, which is
+not enabled by default, so on an ordinary build the only bound is the operating system's, which
+on Linux is over two minutes.
+
+There is no public API to supply one: `TcpSocket.connect` is module-private, so a caller cannot
+drive the non-blocking sequence itself. `core/transport.v` runs the connect on its own thread
+and waits on a channel with a `select` deadline instead. The abandoned thread ends on its own
+when the kernel gives up.

@@ -254,15 +254,25 @@ pub fn exclusion_for(m Metrics) ?Exclusion {
 	if m.is_cache {
 		return .cache
 	}
-	if m.warm.n == 0 {
+
+	// The scored probe is `warm` where there is one, and `dot_warm` where there
+	// is not. An encrypted-only provider never attempted a plaintext query, and
+	// reading its empty warm figures as silence would report a resolver that
+	// answered every question as unreachable.
+	scored := if m.warm.expected > 0 { m.warm } else { m.dot_warm }
+
+	if scored.expected == 0 {
+		return .unreachable
+	}
+	if scored.n == 0 {
 		// Refused before unreachable: a resolver that answered every query is
 		// not silent, whatever else it is.
-		if m.warm.refused > 0 {
+		if scored.refused > 0 {
 			return .refused
 		}
 		return .unreachable
 	}
-	if m.warm.n < min_ranked_samples {
+	if scored.n < min_ranked_samples {
 		return .low_n
 	}
 	return none

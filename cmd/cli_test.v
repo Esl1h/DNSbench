@@ -150,7 +150,7 @@ fn test_every_other_probe_asks_the_planned_name() {
 fn test_an_encrypted_only_provider_is_reported_not_dropped() ! {
 	cat := catalog.embedded()!
 	mut warnings := []store.Warning{}
-	subjects := select_subjects(cat, Options{}, core.NetInfo{}, mut warnings)!
+	subjects := select_subjects(cat, Options{}, core.NetInfo{}, ['warm'], mut warnings)!
 
 	assert subjects.filter(it.key == 'mullvad').len == 0
 	skipped := warnings.filter(it.key == 'mullvad')
@@ -166,7 +166,7 @@ fn test_only_an_encrypted_only_provider_explains_itself() {
 	mut warnings := []store.Warning{}
 	if _ := select_subjects(cat, Options{
 		only: ['mullvad']
-	}, core.NetInfo{}, mut warnings) {
+	}, core.NetInfo{}, ['warm'], mut warnings) {
 		assert false, 'expected an error'
 	} else {
 		assert err.msg().contains('nothing measurable')
@@ -194,5 +194,62 @@ fn test_the_edge_probe_is_refused_without_something_to_rank_against() {
 		assert false, 'expected an error, got ${kept}'
 	} else {
 		assert err.msg().contains('needs a latency probe')
+	}
+}
+
+fn test_the_hyphenated_probe_spelling_is_accepted() ! {
+	// The documents write dot-fresh and dot-warm; the output contract writes
+	// dot_fresh and dot_warm. Both are accepted on the command line and only one
+	// of them travels onward, so nothing downstream has to know about the other.
+	o := parse_args(['--probes', 'dot-fresh,dot-warm'])!
+
+	assert o.probes == ['dot_fresh', 'dot_warm']
+}
+
+fn test_dot_probes_ride_the_dot_transport() {
+	assert transports_used(['dot_warm']) == ['dot']
+	assert transports_used(['warm', 'dot_fresh']) == ['udp', 'dot']
+}
+
+fn test_an_encrypted_only_provider_is_measurable_once_dot_is_asked_for() ! {
+	// Mullvad answers REFUSED on port 53 by design and serves DoT from the same
+	// addresses. It is absent from a plaintext run, present in a DoT one, and
+	// carries only the probes it can actually answer.
+	cat := catalog.embedded()!
+
+	mut plain_warnings := []store.Warning{}
+	plain := select_subjects(cat, Options{
+		only: ['mullvad']
+	}, core.NetInfo{}, ['warm'], mut plain_warnings) or {
+		assert err.msg().contains('no plaintext endpoint')
+		[]Subject{}
+	}
+	assert plain.len == 0
+
+	mut dot_warnings := []store.Warning{}
+	over_tls := select_subjects(cat, Options{
+		only: ['mullvad']
+	}, core.NetInfo{}, ['warm', 'dot_warm'], mut dot_warnings)!
+
+	assert over_tls.len == 1
+	assert over_tls[0].dot_host == 'dns.mullvad.net'
+	assert over_tls[0].dot_ip == '194.242.2.2'
+	// Not warm: it has no plaintext endpoint to run it against.
+	assert over_tls[0].probes == ['dot_warm']
+}
+
+fn test_a_provider_without_dot_keeps_only_the_plaintext_probes() ! {
+	// DNS4EU publishes a DoT hostname, so this asserts against one that does
+	// not: a provider is never charged a total loss on a transport it never
+	// offered.
+	cat := catalog.embedded()!
+	mut warnings := []store.Warning{}
+	subjects := select_subjects(cat, Options{}, core.NetInfo{}, ['warm', 'dot_warm'], mut warnings)!
+
+	for s in subjects {
+		if s.dot_ip == '' {
+			assert 'dot_warm' !in s.probes
+			assert 'warm' in s.probes
+		}
 	}
 }

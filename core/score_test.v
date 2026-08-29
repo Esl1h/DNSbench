@@ -403,6 +403,23 @@ fn test_exclusion_reasons() {
 		warm: compute_counted([]f64{}, 40, 40)
 	}
 	assert exclusion_for(refusing)? == .refused
+
+	// An encrypted-only provider attempted no plaintext query at all. Its empty
+	// warm figures are an absence of attempts and not an absence of answers, so
+	// `dot_warm` is what decides.
+	over_tls := Metrics{
+		dot_warm: compute([12.0].repeat(40), 40)
+	}
+	assert exclusion_for(over_tls) == none
+
+	thin_over_tls := Metrics{
+		dot_warm: compute([12.0].repeat(12), 40)
+	}
+	assert exclusion_for(thin_over_tls)? == .low_n
+
+	// Nothing was attempted anywhere.
+	nothing := Metrics{}
+	assert exclusion_for(nothing)? == .unreachable
 }
 
 fn test_exclusion_strings_match_the_output_contract() {

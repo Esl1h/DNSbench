@@ -474,7 +474,7 @@ pub fn (r RunResult) to_table() string {
 		'   INTERRUPTED, results are partial'
 	}
 	out << ''
-	out << '  #  PROVIDER              SCORE    p50    p95    JIT   LOSS   EDGE   MIS  FLAGS'
+	out << '  #  PROVIDER              SCORE    p50    p95    JIT   LOSS   EDGE   MIS    DoT  FLAGS'
 	out << '  ' + '-'.repeat(76)
 
 	mut last_tier := 0
@@ -529,7 +529,7 @@ fn row_for(p ProviderResult, rank string) string {
 		flags << '~${d}'
 	}
 
-	return '${rank}  ${p.label:-20s}  ${score}  ' + '${cell(warm.p50)}  ${cell(warm.p95)}  ' + '${cell(warm.jitter)}  ${warm.loss:5.1f}%  ' + '${cell(p.edge.median_penalty_ms)}  ${misrouted_cell(p.edge):4s}  ${flags.join(' ')}'
+	return '${rank}  ${p.label:-20s}  ${score}  ' + '${cell(warm.p50)}  ${cell(warm.p95)}  ' + '${cell(warm.jitter)}  ${warm.loss:5.1f}%  ' + '${cell(p.edge.median_penalty_ms)}  ${misrouted_cell(p.edge):4s}  ' + '${cell(probe_named(p, 'dot_warm').p50)}  ${flags.join(' ')}'
 }
 
 fn probe_named(p ProviderResult, name string) core.Stats {
@@ -577,8 +577,8 @@ pub fn (r RunResult) to_markdown() string {
 	out << 'profile ${r.run.profile} rounds=${r.run.rounds} complete=${r.run.complete} started=${r.run.started_at}'
 	out << '-->'
 	out << ''
-	out << '| # | Provider | Score | p50 | p95 | Jitter | Loss | Edge | Misrouted | Flags |'
-	out << '|---|---|---:|---:|---:|---:|---:|---:|---:|---|'
+	out << '| # | Provider | Score | p50 | p95 | Jitter | Loss | Edge | Misrouted | DoT | Flags |'
+	out << '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|'
 
 	for p in r.results {
 		warm := probe_named(p, 'warm')
@@ -593,7 +593,7 @@ pub fn (r RunResult) to_markdown() string {
 			flags << '~${d}'
 		}
 
-		out << '| ${rank} | ${p.label} | ${score} | ${md_cell(warm.p50)} | ${md_cell(warm.p95)} |' + ' ${md_cell(warm.jitter)} | ${warm.loss:.1f}% | ${md_cell(p.edge.median_penalty_ms)} | ${misrouted_cell(p.edge)} |' + ' ${flags.join(', ')} |'
+		out << '| ${rank} | ${p.label} | ${score} | ${md_cell(warm.p50)} | ${md_cell(warm.p95)} |' + ' ${md_cell(warm.jitter)} | ${warm.loss:.1f}% | ${md_cell(p.edge.median_penalty_ms)} | ${misrouted_cell(p.edge)} |' + ' ${md_cell(probe_named(p, 'dot_warm').p50)} | ${flags.join(', ')} |'
 	}
 
 	out << ''

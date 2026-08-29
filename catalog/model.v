@@ -39,11 +39,17 @@ pub const tag_vocabulary = {
 
 pub struct Provider {
 pub:
-	key      string
-	label    string
-	udp4     []string
-	udp6     []string
-	dot      string // TLS verification hostname, not an address to dial
+	key   string
+	label string
+	udp4  []string
+	udp6  []string
+	dot   string // TLS verification hostname, not an address to dial
+	// dot4 and dot6 are the addresses to dial for DoT. They exist because a
+	// published address is not always a plaintext one: Mullvad's answer REFUSED
+	// on port 53 by design and serve DoT on 853 from the same IPs. Empty means
+	// the plaintext addresses are also the encrypted ones, which is the norm.
+	dot4     []string
+	dot6     []string
 	doh      string
 	tags     []string
 	homepage string
@@ -93,6 +99,25 @@ pub fn (p Provider) has_endpoint() bool {
 	return p.udp4.len > 0 || p.udp6.len > 0 || p.dot != '' || p.doh != ''
 }
 
+// dot_address is the address to dial for DoT, or empty when the entry cannot be
+// measured over TLS.
+//
+// It falls back to the plaintext address because for most providers they are
+// the same machine on a different port, and repeating the list in the catalog
+// would be a second copy to keep in step with the first.
+pub fn (p Provider) dot_address() string {
+	if p.dot == '' {
+		return ''
+	}
+	if p.dot4.len > 0 {
+		return p.dot4[0]
+	}
+	if p.udp4.len > 0 {
+		return p.udp4[0]
+	}
+	return ''
+}
+
 // parse reads a catalog and rejects anything it cannot vouch for.
 //
 // Validation is strict on purpose. A provider with an unknown tag, a duplicate
@@ -136,6 +161,11 @@ pub fn parse(text string) !Catalog {
 					return error('provider "${key}" has udp4 entry "${ip}", which is not an IPv4 literal')
 				}
 			}
+			for ip in string_list(m, 'dot4') {
+				if !looks_like_ipv4(ip) {
+					return error('provider "${key}" has dot4 entry "${ip}", which is not an IPv4 literal')
+				}
+			}
 			for ip in string_list(m, 'udp6') {
 				if !looks_like_ipv6(ip) {
 					return error('provider "${key}" has udp6 entry "${ip}", which is not an IPv6 literal')
@@ -148,6 +178,8 @@ pub fn parse(text string) !Catalog {
 			label: m['label'] or { toml.Any('') }.string()
 			udp4: string_list(m, 'udp4')
 			udp6: string_list(m, 'udp6')
+			dot4: string_list(m, 'dot4')
+			dot6: string_list(m, 'dot6')
 			dot: m['dot'] or { toml.Any('') }.string()
 			doh: m['doh'] or { toml.Any('') }.string()
 			tags: tags
@@ -212,7 +244,7 @@ pub fn parse(text string) !Catalog {
 // has_placeholder reports whether any endpoint field still carries a __TOKEN__
 // left for a later substitution step.
 fn has_placeholder(m map[string]toml.Any) bool {
-	for key in ['udp4', 'udp6', 'dot', 'doh'] {
+	for key in ['udp4', 'udp6', 'dot4', 'dot6', 'dot', 'doh'] {
 		value := m[key] or { continue }
 		if value.string().contains('__') {
 			return true

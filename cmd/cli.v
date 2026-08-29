@@ -36,9 +36,17 @@ struct Options {
 	seed      []u32
 	timeout   time.Duration = 2 * time.second
 	cold_zone string
+	ca_bundle string
 }
 
 fn main() {
+	// A DoT server is free to close an idle connection, and dot_warm holds one
+	// open across the whole interleaved plan. Writing to a socket the peer has
+	// closed then raises SIGPIPE, whose default action is to kill the process
+	// mid-run with no output at all. The write returns an error instead, which
+	// the transport already knows how to report.
+	os.signal_ignore(.pipe)
+
 	opts := parse_args(os.args[1..]) or {
 		eprintln(err.msg())
 		eprintln('')
@@ -73,11 +81,12 @@ fn usage() {
 	eprintln('  --profile <name>   ${core.profiles.keys().join(', ')}  (default: balanced)')
 	eprintln('  --only <keys>      comma-separated provider keys')
 	eprintln('  --rounds <n>       measured rounds per provider (default: 5)')
-	eprintln('  --probes <names>   warm, tcp, cold, ecs  (default: warm)')
+	eprintln('  --probes <names>   warm, tcp, cold, ecs, dot-fresh, dot-warm  (default: warm)')
 	eprintln('  --format <name>    table, json, csv, markdown  (default: table)')
 	eprintln('  --history <path>   append the run to a JSONL history file')
 	eprintln('  --timeout <ms>     per-query timeout (default: 2000)')
 	eprintln('  --cold-zone <zone> wildcard zone for the cold probe')
+	eprintln('  --ca-bundle <path> CA bundle for DoT, overriding the system cascade')
 	eprintln('  --force            measure even with a tunnel interface up')
 	eprintln('  --seed <n>         fix the shuffle, for a reproducible plan')
 	eprintln('  -h, --help')
@@ -88,7 +97,7 @@ fn usage() {
 // value_options are the flags that take an argument. --force and the help
 // flags stand alone.
 const value_options = ['--profile', '--only', '--rounds', '--probes', '--format', '--history',
-	'--timeout', '--cold-zone', '--seed']
+	'--timeout', '--cold-zone', '--ca-bundle', '--seed']
 
 fn parse_args(args []string) !Options {
 	mut o := Options{}
@@ -134,10 +143,14 @@ fn parse_args(args []string) !Options {
 				o = Options{ ...o, rounds: rounds }
 			}
 			'--probes' {
-				names := value.split(',').map(it.trim_space()).filter(it != '')
+				// The documents write dot-fresh and dot-warm; the output contract
+				// writes dot_fresh and dot_warm. Both spellings are accepted and
+				// the underscore is the one that travels onward, so there is a
+				// single internal name.
+				names := value.split(',').map(it.trim_space().replace('-', '_')).filter(it != '')
 				for name in names {
-					if name !in ['warm', 'tcp', 'cold', 'ecs'] {
-						return error('unknown probe "${name}"; known: warm, tcp, cold, ecs')
+					if name !in known_probes {
+						return error('unknown probe "${name}"; known: ${known_probes.join(', ')}')
 					}
 				}
 				o = Options{ ...o, probes: names }
@@ -161,6 +174,9 @@ fn parse_args(args []string) !Options {
 			'--cold-zone' {
 				o = Options{ ...o, cold_zone: value }
 			}
+			'--ca-bundle' {
+				o = Options{ ...o, ca_bundle: value }
+			}
 			'--seed' {
 				n := u32(value.u64())
 				o = Options{ ...o, seed: [n, n ^ u32(0x9e3779b9)] }
@@ -179,9 +195,16 @@ fn parse_args(args []string) !Options {
 
 // A provider under measurement, with the samples it has produced so far.
 struct Subject {
-	key      string
-	label    string
-	ip       string
+	key   string
+	label string
+	ip    string
+	// dot_ip and dot_host are the address to dial and the name the certificate
+	// is verified against. Empty when the entry offers no DoT.
+	dot_ip   string
+	dot_host string
+	// probes is what this subject can actually run. It is not always the run's
+	// probe list: an encrypted-only provider has no plaintext probe.
+	probes   []string
 	is_cache bool
 	declared []string
 mut:
@@ -214,10 +237,6 @@ fn run(opts Options) !store.RunResult {
 	}
 
 	cat := catalog.embedded()!
-	mut subjects := select_subjects(cat, opts, net, mut warnings)!
-	if subjects.len == 0 {
-		return error('no provider left to measure')
-	}
 
 	mut probes := opts.probes.clone()
 	if 'cold' in probes && opts.cold_zone == '' {
@@ -235,6 +254,19 @@ fn run(opts Options) !store.RunResult {
 		}
 	}
 
+	// The trust anchor is resolved once, before anything is measured, so a
+	// missing bundle is a startup error rather than sixteen identical handshake
+	// failures. docs/ARCHITECTURE.md § TLS trust anchor.
+	mut ca_bundle := ''
+	if probes.any(it in dot_probes) {
+		ca_bundle = core.find_ca_bundle(opts.ca_bundle)!
+	}
+
+	mut subjects := select_subjects(cat, opts, net, probes, mut warnings)!
+	if subjects.len == 0 {
+		return error('no provider left to measure')
+	}
+
 	// The edge probe is not a latency probe and does not belong in the plan: it
 	// asks each CDN host once per provider and times a TCP connect, where the
 	// plan is rounds over a domain set. It also cannot rank on its own, because
@@ -246,19 +278,28 @@ fn run(opts Options) !store.RunResult {
 	}
 
 	mut keys := []string{cap: subjects.len}
+	mut probes_for := map[string][]string{}
 	for s in subjects {
 		keys << s.key
+		own := s.probes.filter(it != 'ecs')
+		if own != timed {
+			probes_for[s.key] = own
+		}
+	}
+	if keys.filter(probes_for[it] or { timed }.len > 0).len == 0 {
+		return error('no provider can run any of the requested probes')
 	}
 
 	plan := core.build_plan(
 		provider_keys: keys
 		probes: timed
+		probes_for: probes_for
 		domains: warm_domains
 		rounds: opts.rounds
 		seed: opts.seed
 	)!
 
-	execute(plan, mut subjects, opts)!
+	execute(plan, mut subjects, opts, ca_bundle)!
 
 	mut edge := map[string]core.EdgePenalty{}
 	mut best_rtt := ?f64(none)
@@ -272,7 +313,7 @@ fn run(opts Options) !store.RunResult {
 	}
 
 	duration := f64(time.since(started).microseconds()) / 1_000_000.0
-	return assemble(subjects, probes, edge, best_rtt, opts, net, cat, started, duration, warnings)
+	return assemble(subjects, edge, best_rtt, opts, net, cat, started, duration, warnings)
 }
 
 // timed_probes is the probe list the plan walks: everything but the edge probe.
@@ -384,10 +425,27 @@ const warm_domains = [
 	'reddit.com',
 ]
 
+// known_probes is the vocabulary of --probes, in the output contract's
+// spelling. docs/METHODOLOGY.md § Probes.
+const known_probes = ['warm', 'tcp', 'cold', 'ecs', 'dot_fresh', 'dot_warm']
+
+// dot_probes are the ones that need a TLS connection and a trust anchor.
+const dot_probes = ['dot_fresh', 'dot_warm']
+
+// dot_port and dot_timeout are RFC 7858's port and the encrypted-probe budget
+// of docs/METHODOLOGY.md § Timeouts, which is longer than the plaintext one
+// because a handshake is two more round trips.
+const dot_port = 853
+
+const dot_timeout = 5 * time.second
+
 const domain_set_id = 'builtin:top8'
 
-fn select_subjects(cat catalog.Catalog, opts Options, net core.NetInfo, mut warnings []store.Warning) ![]Subject {
+fn select_subjects(cat catalog.Catalog, opts Options, net core.NetInfo, probes []string, mut warnings []store.Warning) ![]Subject {
 	mut out := []Subject{}
+
+	wants_dot := probes.any(it in dot_probes)
+	plaintext := probes.filter(it !in dot_probes)
 
 	for p in cat.providers {
 		if opts.only.len > 0 && p.key !in opts.only {
@@ -403,16 +461,28 @@ fn select_subjects(cat catalog.Catalog, opts Options, net core.NetInfo, mut warn
 			}
 			continue
 		}
+		dot_ip := p.dot_address()
 		if p.udp4.len == 0 {
-			// Encrypted-only entries are not failures, and must not read as
-			// absence either. Mullvad publishes DoT and DoH and no usable
-			// plaintext address, so there is nothing here to measure until the
-			// encrypted transports land; a row that simply vanishes reads as a
-			// tool that forgot the provider.
-			warnings << store.Warning{
-				level: 'info'
+			// Encrypted-only entries are not failures and must not read as
+			// absence either. Mullvad answers REFUSED on port 53 by design and
+			// serves DoT from the same addresses, so it is measurable here
+			// exactly when a DoT probe was asked for.
+			if !wants_dot || dot_ip == '' {
+				warnings << store.Warning{
+					level: 'info'
+					key: p.key
+					message: '${p.key} skipped: no plaintext endpoint, add --probes dot-warm to measure it'
+				}
+				continue
+			}
+			out << Subject{
 				key: p.key
-				message: '${p.key} skipped: no plaintext endpoint, DoT and DoH only'
+				label: p.label
+				ip: dot_ip
+				dot_ip: dot_ip
+				dot_host: p.dot
+				probes: probes.filter(it in dot_probes)
+				declared: p.declared()
 			}
 			continue
 		}
@@ -420,6 +490,12 @@ fn select_subjects(cat catalog.Catalog, opts Options, net core.NetInfo, mut warn
 			key: p.key
 			label: p.label
 			ip: p.udp4[0]
+			dot_ip: dot_ip
+			dot_host: p.dot
+			// A provider with no DoT endpoint keeps the plaintext probes and
+			// loses the encrypted ones, rather than scoring a total loss on a
+			// transport it never offered.
+			probes: if dot_ip == '' { plaintext } else { probes }
 			declared: p.declared()
 		}
 	}
@@ -437,6 +513,10 @@ fn select_subjects(cat catalog.Catalog, opts Options, net core.NetInfo, mut warn
 			key: 'system-${r.ip}'
 			label: 'system ${r.ip}'
 			ip: r.ip
+			// The machine's own resolvers are addresses, not catalog entries:
+			// nothing says what hostname their certificate would carry, so
+			// there is no DoT probe to run against them.
+			probes: plaintext
 			is_cache: r.is_cache
 		}
 	}
@@ -457,9 +537,13 @@ fn select_subjects(cat catalog.Catalog, opts Options, net core.NetInfo, mut warn
 // A step that fails contributes to loss and nothing else; the run never stops
 // for one bad provider, because the networks where that happens are exactly the
 // ones worth measuring. docs/ARCHITECTURE.md § Failure policy.
-fn execute(plan []core.Step, mut subjects []Subject, opts Options) ! {
+fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle string) ! {
 	mut udp := map[string]&core.UdpTransport{}
 	mut tcp := map[string]&core.TcpTransport{}
+	// One TLS connection per provider, held for the run. That is the whole
+	// point of dot_warm: the handshake is paid once, as every real client pays
+	// it. dot_fresh opens its own and closes it again per query.
+	mut dot := map[string]&core.DotTransport{}
 	mut pacer := core.new_pacer(core.rate_interval)
 	start := time.new_stopwatch()
 
@@ -468,6 +552,9 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options) ! {
 			t.close()
 		}
 		for _, mut t in tcp {
+			t.close()
+		}
+		for _, mut t in dot {
 			t.close()
 		}
 	}
@@ -496,7 +583,7 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options) ! {
 			time.sleep(send_at - now)
 		}
 
-		out := query_once(step, target, opts.cold_zone, mut udp, mut tcp) or {
+		out := query_once(step, target, subjects[idx], opts, ca_bundle, mut udp, mut tcp, mut dot) or {
 			if !step.discard {
 				subjects[idx].failed[step.probe]++
 			}
@@ -527,8 +614,12 @@ struct Outcome {
 	code int
 }
 
-fn query_once(step core.Step, target core.Target, cold_zone string, mut udp map[string]&core.UdpTransport, mut tcp map[string]&core.TcpTransport) !Outcome {
-	msg := core.build_query(query_name(step, cold_zone), core.qtype_a)!
+fn query_once(step core.Step, target core.Target, subject Subject, opts Options, ca_bundle string, mut udp map[string]&core.UdpTransport, mut tcp map[string]&core.TcpTransport, mut dot map[string]&core.DotTransport) !Outcome {
+	msg := core.build_query(query_name(step, opts.cold_zone), core.qtype_a)!
+
+	if step.probe in dot_probes {
+		return dot_query(step, subject, ca_bundle, msg, mut dot)
+	}
 
 	if step.probe == 'tcp' {
 		// A TCP connection is reopened per round rather than held for the whole
@@ -560,6 +651,83 @@ fn query_once(step core.Step, target core.Target, cold_zone string, mut udp map[
 	}
 }
 
+// dot_query runs one query over TLS, in whichever of the two shapes was asked
+// for.
+//
+// dot_fresh times the whole thing: connect, handshake, query. That is not an
+// implementation detail leaking into the number, it is the number. A benchmark
+// that opens a connection per query is measuring handshakes, and this variant
+// exists to show by how much.
+//
+// dot_warm times only the query, on a connection opened once and held, which is
+// what Android Private DNS, systemd-resolved, unbound and dnscrypt-proxy all
+// do. Only dot_warm feeds the score.
+fn dot_query(step core.Step, subject Subject, ca_bundle string, msg []u8, mut dot map[string]&core.DotTransport) !Outcome {
+	if subject.dot_ip == '' || subject.dot_host == '' {
+		return error('no DoT endpoint for ${subject.key}')
+	}
+	target := core.Target{
+		ip: subject.dot_ip
+		port: dot_port
+		timeout: dot_timeout
+	}
+
+	if step.probe == 'dot_fresh' {
+		mut t := &core.DotTransport{
+			hostname: subject.dot_host
+			ca_bundle: ca_bundle
+		}
+		defer {
+			t.close()
+		}
+		sw := time.new_stopwatch()
+		t.open(target)!
+		reply, _ := t.query(msg)!
+		return Outcome{
+			ms: f64(sw.elapsed().microseconds()) / 1000.0
+			code: core.rcode(reply)
+		}
+	}
+
+	if step.provider_key !in dot {
+		mut t := &core.DotTransport{
+			hostname: subject.dot_host
+			ca_bundle: ca_bundle
+		}
+		t.open(target)!
+		dot[step.provider_key] = t
+	}
+	mut t := dot[step.provider_key] or { return error('no dot transport') }
+	if reply, ms := t.query(msg) {
+		return Outcome{
+			ms: ms
+			code: core.rcode(reply)
+		}
+	}
+
+	// The peer closed an idle connection, which a DoT server is free to do and
+	// which this plan invites by holding one open across every other provider's
+	// turn. Reconnect and ask again rather than recording a loss: the drop is an
+	// artefact of how the tool schedules, not a fact about the resolver. The
+	// retry is still a warm sample, because open() pays the handshake and
+	// query() times only the query.
+	t.close()
+	dot.delete(step.provider_key)
+
+	mut fresh := &core.DotTransport{
+		hostname: subject.dot_host
+		ca_bundle: ca_bundle
+	}
+	fresh.open(target)!
+	dot[step.provider_key] = fresh
+
+	reply, ms := fresh.query(msg)!
+	return Outcome{
+		ms: ms
+		code: core.rcode(reply)
+	}
+}
+
 // query_name is the name actually asked.
 //
 // For every probe but `cold` it is the plan's domain. `cold` has to ask
@@ -579,7 +747,7 @@ fn query_name(step core.Step, cold_zone string) string {
 	return '${rand.string_from_set('abcdefghijklmnopqrstuvwxyz0123456789', 16)}.${cold_zone}'
 }
 
-fn assemble(subjects []Subject, probes []string, edge map[string]core.EdgePenalty, best_rtt ?f64, opts Options, net core.NetInfo, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning) store.RunResult {
+fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, best_rtt ?f64, opts Options, net core.NetInfo, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning) store.RunResult {
 	weights := core.profiles[opts.profile] or { core.Weights{} }
 	expected := core.expected_samples(opts.rounds, warm_domains.len)
 
@@ -590,18 +758,22 @@ fn assemble(subjects []Subject, probes []string, edge map[string]core.EdgePenalt
 				key: s.key
 				is_cache: s.is_cache
 				ecs_penalty_ms: median_penalty(edge, s.key)
+				offers_dot: s.dot_ip != ''
 				offers_ipv6: net.ipv6
 				declared: s.declared
 			}
 			warm_ms: s.samples['warm'] or { []f64{} }
 			cold_ms: s.samples['cold'] or { []f64{} }
-			dot_warm_ms: []f64{}
-			warm_expected: if 'warm' in probes { expected } else { 0 }
-			cold_expected: if 'cold' in probes { expected } else { 0 }
-			dot_warm_expected: 0
+			dot_warm_ms: s.samples['dot_warm'] or { []f64{} }
+			// Per subject, not per run: a provider that could not run a probe
+			// attempted nothing on it, and charging it the run's attempt count
+			// would turn an absence into a hundred per cent loss.
+			warm_expected: if 'warm' in s.probes { expected } else { 0 }
+			cold_expected: if 'cold' in s.probes { expected } else { 0 }
+			dot_warm_expected: if 'dot_warm' in s.probes { expected } else { 0 }
 			warm_refused: s.refused['warm'] or { 0 }
 			cold_refused: s.refused['cold'] or { 0 }
-			dot_warm_refused: 0
+			dot_warm_refused: s.refused['dot_warm'] or { 0 }
 		}
 	}
 
@@ -624,8 +796,8 @@ fn assemble(subjects []Subject, probes []string, edge map[string]core.EdgePenalt
 		}
 		subject := subjects[idx]
 
-		mut reports := []store.ProbeReport{cap: probes.len}
-		for name in probes {
+		mut reports := []store.ProbeReport{cap: subject.probes.len}
+		for name in subject.probes {
 			// The edge probe reports under `edge`, not under `probes`: it has an
 			// answer and a connect time per host, not a latency distribution.
 			if name == 'ecs' {
@@ -656,7 +828,7 @@ fn assemble(subjects []Subject, probes []string, edge map[string]core.EdgePenalt
 			capabilities: store.Capabilities{
 				// dnssec_validating stays absent until the probe that
 				// establishes it lands in M2. Absent is not false.
-				transports: transports_used(probes)
+				transports: transports_used(subject.probes)
 				ipv6: net.ipv6
 			}
 			declared: subject.declared
@@ -709,6 +881,7 @@ fn transports_used(probes []string) []string {
 			// The edge probe asks over UDP and then connects over TCP, and the
 			// contract names transports rather than probes.
 			'ecs' { ['udp', 'tcp'] }
+			'dot_fresh', 'dot_warm' { ['dot'] }
 			else { ['udp'] }
 		}
 		for name in names {

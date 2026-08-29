@@ -306,3 +306,43 @@ fn test_jitter_factor_stays_within_the_span() {
 		assert f <= jitter_high
 	}
 }
+
+fn test_a_provider_can_be_given_its_own_probe_list() ! {
+	// An encrypted-only provider has no plaintext probe it can run. Giving it
+	// one anyway would fill the plan with queries that cannot succeed and record
+	// the result as a hundred per cent loss it never had a chance at.
+	plan := build_plan(
+		provider_keys: ['plain', 'encrypted']
+		probes: ['warm', 'dot_warm']
+		probes_for: {
+			'encrypted': ['dot_warm']
+		}
+		domains: ['a.example', 'b.example']
+		rounds: 1
+	)!
+
+	plain := plan.filter(it.provider_key == 'plain')
+	encrypted := plan.filter(it.provider_key == 'encrypted')
+
+	// Two rounds counting the discarded pass, two probes, two domains.
+	assert plain.len == 8
+	// The same, minus everything warm.
+	assert encrypted.len == 4
+	assert encrypted.all(it.probe == 'dot_warm')
+	assert plain.filter(it.probe == 'warm').len == 4
+}
+
+fn test_a_provider_not_named_keeps_the_run_probe_list() ! {
+	plan := build_plan(
+		provider_keys: ['a', 'b']
+		probes: ['warm']
+		probes_for: {
+			'b': ['tcp']
+		}
+		domains: ['x.example']
+		rounds: 1
+	)!
+
+	assert plan.filter(it.provider_key == 'a').all(it.probe == 'warm')
+	assert plan.filter(it.provider_key == 'b').all(it.probe == 'tcp')
+}

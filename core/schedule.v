@@ -50,6 +50,10 @@ pub struct PlanSpec {
 pub:
 	provider_keys []string
 	probes        []string
+	// probes_for replaces the probe list for the providers it names. An
+	// encrypted-only entry has no plaintext probe it can run, and giving it one
+	// anyway would record a total loss it never had a chance at.
+	probes_for map[string][]string
 	// domains are the fixed set each round queries in full. docs/METHODOLOGY.md
 	// § warm: "fixed domain set, queried repeatedly". A round is one pass over
 	// the set, not one query, which is why round 0 discards a whole pass: every
@@ -99,7 +103,8 @@ pub fn build_plan(spec PlanSpec) ![]Step {
 		order := rng.shuffle_clone(spec.provider_keys)!
 
 		for key in order {
-			for probe in spec.probes {
+			probes := spec.probes_for[key] or { spec.probes }
+			for probe in probes {
 				for domain in spec.domains {
 					steps << Step{
 						round: round

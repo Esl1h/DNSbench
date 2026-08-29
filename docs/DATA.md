@@ -185,6 +185,18 @@ nubank.com.br) supplements the automatic filter.
 sets = ["global", "auto"]   # auto resolves to the detected region
 ```
 
+#### Encrypted endpoints that are not plaintext endpoints
+
+`dot` is the hostname a certificate is verified against, never an address to dial. The address
+is `udp4` for almost every entry, because the encrypted service is the same machine on another
+port and a second copy of the address would be a second thing to keep in step.
+
+`dot4` and `dot6` exist for the entries where that is not true. Mullvad publishes
+`194.242.2.2`, answers REFUSED to everything on port 53 by design, and serves DoT from that
+same address on 853. Carried as `udp4` it would be measured as a broken plaintext resolver;
+dropped entirely it would be invisible. Carried as `dot4` it is what it is, and it appears in
+a run exactly when a DoT probe was asked for.
+
 ### CDN hosts for the edge probe
 
 Curated, embedded, health-checked. Global multi-PoP CDNs only — this is correctness, not

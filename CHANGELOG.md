@@ -10,6 +10,18 @@ comparability and `history` must be able to detect it.
 ## [Unreleased]
 
 ### Added
+- `core/tls.v`: DNS over TLS, RFC 7858. `--probes dot-fresh` times connect, handshake and
+  query together; `--probes dot-warm` holds one connection open and times only the query, as
+  Android Private DNS, systemd-resolved, unbound and dnscrypt-proxy all do. Only `dot-warm`
+  feeds the score. Measured from São Paulo the two differ by 4x to 12x
+- `--ca-bundle`, and the runtime cascade behind it. V loads no system trust store, so the
+  path is resolved once before anything is measured and a missing bundle is a startup error
+  rather than sixteen identical handshake failures. There is no `--insecure`
+- `dot4` and `dot6` in the catalog, for entries whose encrypted address is not a plaintext
+  one. Mullvad is measurable again, over TLS, and only when a DoT probe is asked for
+- `PlanSpec.probes_for`, so a provider can be given its own probe list. An encrypted-only
+  entry no longer gets plaintext steps it cannot answer
+- A `DoT` column in the table and Markdown output, carrying `dot_warm`
 - `edge.misrouted` and `edge.measured`: how many CDN hosts came back more than 25 ms adrift,
   out of how many produced a penalty at all. In JSON, in the CSV, in the history lines and as
   a `MIS` column. It informs and does not rank; the `edge` subscore still reads the median
@@ -102,6 +114,12 @@ comparability and `history` must be able to detect it.
   the link cannot carry
 
 ### Changed
+- `exclusion_for` reads `dot_warm` when a provider attempted no plaintext query at all.
+  Empty warm figures were being read as silence, which reported an encrypted-only resolver
+  that answered every question as unreachable
+- Attempt counts are per provider rather than per run, so a provider that could not run a
+  probe is not charged the run's attempt count and reported at 100% loss for it
+- Catalog `version` 6 to 7
 - The edge probe's host set goes from five entries to nine, across four CDN families, and
   drops every anycast entry including `assets.nflxext.com`, `storage.googleapis.com` and
   `cdn.jsdelivr.net`. An anycast CDN chooses its edge by BGP after the packet leaves, so no
@@ -153,6 +171,12 @@ comparability and `history` must be able to detect it.
   change reported numbers
 
 ### Fixed
+- The process died with exit 141 and no output part-way through the first DoT run. V does not
+  mask `SIGPIPE`, and `dot_warm` holds a connection open across every other provider's turn,
+  which is exactly the idle connection a DoT server closes. `main` now ignores `SIGPIPE`, and
+  a dropped connection is reconnected and retried rather than counted as loss: it is an
+  artefact of how the run is scheduled, not a fact about the resolver. That removed a 9.4%
+  loss figure from `dot_warm`
 - `cmd/cli.v`: a provider with no plaintext endpoint was dropped from the run in silence,
   while a provider needing configuration got a warning. Both now say why they are absent, and
   `--only` on such a key reports that the key matched and was skipped rather than that it

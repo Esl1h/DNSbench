@@ -95,6 +95,13 @@ So we measure both, and **only `dot-warm` feeds the score**:
 - `dot-warm` — connect and handshake once, then N queries on the same connection, discarding
   the first.
 
+A DoT server is free to close an idle connection, and the interleaved plan invites exactly
+that: one provider's connection sits untouched while every other provider takes its turn. When
+that happens the tool reconnects and asks again, rather than recording a loss. The drop is an
+artefact of how the run is scheduled, not a fact about the resolver, and counting it would put
+a scheduling decision into a provider's `loss` figure. The retried query is still a warm
+sample, because the handshake is paid by the reconnection and only the query is timed.
+
 The TUI shows both side by side, because the difference is itself the educational payload.
 
 Additional rule: **connect by IP literal with explicit SNI/verification hostname.** Resolving
