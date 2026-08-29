@@ -34,6 +34,10 @@ pub enum Exclusion {
 	// rcode. The resolver is reachable and is declining to resolve, which is
 	// a different fact from silence and belongs to a different owner.
 	refused
+	// Measured, and only on probes that do not rank. An encrypted-only provider
+	// asked for over DoH alone has answered every question put to it; it just
+	// was not asked one the score is built from.
+	unscored
 }
 
 // str is the wire form from docs/OUTPUT.md. These strings are the contract a
@@ -44,6 +48,7 @@ pub fn (e Exclusion) str() string {
 		.low_n { 'low_n' }
 		.unreachable { 'unreachable' }
 		.refused { 'refused' }
+		.unscored { 'unscored' }
 	}
 }
 
@@ -54,9 +59,13 @@ pub struct Metrics {
 pub:
 	key      string
 	is_cache bool
-	warm     Stats
-	cold     Stats
-	dot_warm Stats
+	// attempted is every query the run put to this provider, on any probe,
+	// scored or not. It exists so that "was not asked a scored question" can be
+	// told apart from "was asked and did not answer".
+	attempted int
+	warm      Stats
+	cold      Stats
+	dot_warm  Stats
 	// ecs_penalty_ms is the median penalty in milliseconds above the run's best
 	// for each CDN host. Absent when the edge probe did not run.
 	ecs_penalty_ms ?f64
@@ -262,6 +271,12 @@ pub fn exclusion_for(m Metrics) ?Exclusion {
 	scored := if m.warm.expected > 0 { m.warm } else { m.dot_warm }
 
 	if scored.expected == 0 {
+		// Something was asked and answered, just not on a probe that ranks.
+		// Calling that unreachable would be the third time this tool reported a
+		// resolver that answered as silent.
+		if m.attempted > 0 {
+			return .unscored
+		}
 		return .unreachable
 	}
 	if scored.n == 0 {

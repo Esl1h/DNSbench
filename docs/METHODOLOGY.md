@@ -12,13 +12,20 @@ below is a bug we are pre-emptively fixing.
 | `tcp` | TCP/53 | Fallback path, large-response handling | — |
 | `dot-fresh` | DoT | New TCP+TLS handshake per query | — |
 | `dot-warm` | DoT | Persistent connection, amortised handshake | ✓ |
-| `doh` | DoH | HTTP request latency (version-labelled) | ✓ |
+| `doh` | DoH | HTTP request latency (version-labelled) | — |
 | `ecs` | UDP + TCP | **Latency to the CDN edge the resolver chose** | ✓ |
 | `dnssec` | UDP/53 | Does it validate? (bad-signature domain → SERVFAIL) | ✓ (capability) |
 | `filter` | UDP/53 | Does it block? (known ad domain → NXDOMAIN/0.0.0.0) | — (informational) |
 
 Probes not in the score are still measured, reported and available in JSON. They inform; they
 do not rank.
+
+`doh` is one of them. SCORING § Subscores defines `encrypted` as `100 x best_dot_warm /
+this_dot_warm` and nothing else, and this table used to mark `doh` as scored, which was a
+conflict between two documents rather than a decision. It is resolved in SCORING's favour: the
+only HTTP version V's stdlib can speak is 1.1, several endpoints refuse it outright, and a
+subscore that silently means "1.1 where the provider allowed it" would rank on an artefact of
+the client.
 
 ### warm
 

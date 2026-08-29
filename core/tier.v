@@ -200,6 +200,7 @@ fn with_stats(s Samples, warm Stats, cold Stats, dot_warm Stats) Metrics {
 	return Metrics{
 		key: s.base.key
 		is_cache: s.base.is_cache
+		attempted: s.base.attempted
 		warm: warm
 		cold: cold
 		dot_warm: dot_warm

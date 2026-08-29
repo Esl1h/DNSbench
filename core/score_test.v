@@ -417,6 +417,14 @@ fn test_exclusion_reasons() {
 	}
 	assert exclusion_for(thin_over_tls)? == .low_n
 
+	// Measured, and only on probes that do not rank. An encrypted-only provider
+	// asked for over DoH alone answered every question put to it; it was simply
+	// never asked one the score is built from.
+	only_unscored := Metrics{
+		attempted: 40
+	}
+	assert exclusion_for(only_unscored)? == .unscored
+
 	// Nothing was attempted anywhere.
 	nothing := Metrics{}
 	assert exclusion_for(nothing)? == .unreachable
@@ -430,4 +438,5 @@ fn test_exclusion_strings_match_the_output_contract() {
 	assert Exclusion.low_n.str() == 'low_n'
 	assert Exclusion.unreachable.str() == 'unreachable'
 	assert Exclusion.refused.str() == 'refused'
+	assert Exclusion.unscored.str() == 'unscored'
 }

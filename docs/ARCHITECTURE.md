@@ -121,12 +121,23 @@ protocol in `probe.v`.
 | UDP/53 | ✅ | `net.dial_udp` |
 | TCP/53 | ✅ | `net.dial_tcp`, 2-byte length prefix |
 | DoT (853) | ✅ | `net.ssl.new_ssl_conn` + RFC 7858 framing |
-| DoH (HTTP/1.1) | ⚠️ | `net.http`; measured but flagged `h1` in output |
+| DoH (HTTP/1.1) | ⚠️ | Hand-written request over `net.ssl`; every result carries `http_version: "1.1"` |
 | DoH (HTTP/2, /3) | ❌ | No h2/h3 client in V stdlib. Needs libcurl binding |
 | DoQ | ❌ | No QUIC in V. Out of scope until one exists |
 
 **This is documented, not hidden.** The output labels DoH results with the HTTP version used,
 because comparing an h1.1 measurement against a browser's real h2 behaviour is misleading.
+
+The limitation is not only cosmetic: some endpoints refuse HTTP/1.1 outright. Quad9 answers
+`505 HTTP Version Not Supported` to every request, and Mullvad closes the connection without a
+status. Both were confirmed with `curl --http1.1` against `curl --http2` on the same endpoint.
+Those providers cannot be measured over DoH by this tool, and the run says so: the 505 is
+recorded as `refused` with a warning naming the status, and never as loss.
+
+`net.http` is not used, despite being the obvious choice. It resolves the URL's hostname
+itself, which would put a lookup inside every latency sample and route that lookup through a
+resolver that may be under test. The request is written by hand over a TLS connection dialled
+to an IP literal, for the same reason DoT is.
 
 ## TLS trust anchor
 

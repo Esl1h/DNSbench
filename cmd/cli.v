@@ -81,7 +81,7 @@ fn usage() {
 	eprintln('  --profile <name>   ${core.profiles.keys().join(', ')}  (default: balanced)')
 	eprintln('  --only <keys>      comma-separated provider keys')
 	eprintln('  --rounds <n>       measured rounds per provider (default: 5)')
-	eprintln('  --probes <names>   warm, tcp, cold, ecs, dot-fresh, dot-warm  (default: warm)')
+	eprintln('  --probes <names>   warm, tcp, cold, ecs, dot-fresh, dot-warm, doh  (default: warm)')
 	eprintln('  --format <name>    table, json, csv, markdown  (default: table)')
 	eprintln('  --history <path>   append the run to a JSONL history file')
 	eprintln('  --timeout <ms>     per-query timeout (default: 2000)')
@@ -202,6 +202,10 @@ struct Subject {
 	// is verified against. Empty when the entry offers no DoT.
 	dot_ip   string
 	dot_host string
+	// The same for DoH, plus the request target.
+	doh_ip   string
+	doh_host string
+	doh_path string
 	// probes is what this subject can actually run. It is not always the run's
 	// probe list: an encrypted-only provider has no plaintext probe.
 	probes   []string
@@ -210,6 +214,9 @@ struct Subject {
 mut:
 	samples map[string][]f64
 	failed  map[string]int
+	// doh_status is the first HTTP status a DoH endpoint answered with that was
+	// not 200, kept so the report can say why rather than only that.
+	doh_status int
 	// Attempts the resolver answered with a non-NOERROR rcode, held apart from
 	// `failed`: one is a resolver declining, the other is nothing coming back.
 	refused map[string]int
@@ -258,7 +265,7 @@ fn run(opts Options) !store.RunResult {
 	// missing bundle is a startup error rather than sixteen identical handshake
 	// failures. docs/ARCHITECTURE.md § TLS trust anchor.
 	mut ca_bundle := ''
-	if probes.any(it in dot_probes) {
+	if probes.any(it in encrypted_probes) {
 		ca_bundle = core.find_ca_bundle(opts.ca_bundle)!
 	}
 
@@ -310,6 +317,20 @@ fn run(opts Options) !store.RunResult {
 		// are computed and then have nothing to be scored relative to, and the
 		// column comes out null on every row.
 		best_rtt = core.best_edge_rtt(samples)
+	}
+
+	for s in subjects {
+		if s.doh_status == 0 {
+			continue
+		}
+		// Naming the status matters. 505 is not a broken endpoint, it is one
+		// that serves DoH over HTTP/2 only, which V's stdlib cannot speak.
+		suffix := if s.doh_status == 505 { ', it serves DoH over HTTP/2 only' } else { '' }
+		warnings << store.Warning{
+			level: 'warn'
+			key: s.key
+			message: '${s.key} doh: endpoint answered HTTP ${s.doh_status} to HTTP/1.1${suffix}'
+		}
 	}
 
 	duration := f64(time.since(started).microseconds()) / 1_000_000.0
@@ -427,25 +448,47 @@ const warm_domains = [
 
 // known_probes is the vocabulary of --probes, in the output contract's
 // spelling. docs/METHODOLOGY.md § Probes.
-const known_probes = ['warm', 'tcp', 'cold', 'ecs', 'dot_fresh', 'dot_warm']
+const known_probes = ['warm', 'tcp', 'cold', 'ecs', 'dot_fresh', 'dot_warm', 'doh']
 
-// dot_probes are the ones that need a TLS connection and a trust anchor.
+// encrypted_probes need a TLS connection and a trust anchor.
 const dot_probes = ['dot_fresh', 'dot_warm']
+
+const encrypted_probes = ['dot_fresh', 'dot_warm', 'doh']
 
 // dot_port and dot_timeout are RFC 7858's port and the encrypted-probe budget
 // of docs/METHODOLOGY.md § Timeouts, which is longer than the plaintext one
 // because a handshake is two more round trips.
 const dot_port = 853
 
+const doh_port = 443
+
 const dot_timeout = 5 * time.second
 
 const domain_set_id = 'builtin:top8'
 
+// offered narrows a probe list to the encrypted probes a provider can answer.
+//
+// A DoT hostname without an address, or a DoH URL a provider does not publish,
+// is not an endpoint. Handing it the probe anyway would record a hundred per
+// cent loss on a transport it never offered.
+fn offered(probes []string, dot_ip string, doh_ip string) []string {
+	mut out := []string{}
+	for probe in probes {
+		if probe in dot_probes && dot_ip != '' {
+			out << probe
+		}
+		if probe == 'doh' && doh_ip != '' {
+			out << probe
+		}
+	}
+	return out
+}
+
 fn select_subjects(cat catalog.Catalog, opts Options, net core.NetInfo, probes []string, mut warnings []store.Warning) ![]Subject {
 	mut out := []Subject{}
 
-	wants_dot := probes.any(it in dot_probes)
-	plaintext := probes.filter(it !in dot_probes)
+	wants_encrypted := probes.any(it in encrypted_probes)
+	plaintext := probes.filter(it !in encrypted_probes)
 
 	for p in cat.providers {
 		if opts.only.len > 0 && p.key !in opts.only {
@@ -462,12 +505,13 @@ fn select_subjects(cat catalog.Catalog, opts Options, net core.NetInfo, probes [
 			continue
 		}
 		dot_ip := p.dot_address()
+		doh_ip := p.doh_address()
 		if p.udp4.len == 0 {
 			// Encrypted-only entries are not failures and must not read as
 			// absence either. Mullvad answers REFUSED on port 53 by design and
 			// serves DoT from the same addresses, so it is measurable here
 			// exactly when a DoT probe was asked for.
-			if !wants_dot || dot_ip == '' {
+			if !wants_encrypted || (dot_ip == '' && doh_ip == '') {
 				warnings << store.Warning{
 					level: 'info'
 					key: p.key
@@ -478,24 +522,32 @@ fn select_subjects(cat catalog.Catalog, opts Options, net core.NetInfo, probes [
 			out << Subject{
 				key: p.key
 				label: p.label
-				ip: dot_ip
+				ip: if dot_ip != '' { dot_ip } else { doh_ip }
 				dot_ip: dot_ip
 				dot_host: p.dot
-				probes: probes.filter(it in dot_probes)
+				doh_ip: doh_ip
+				doh_host: p.doh_host()
+				doh_path: p.doh_path()
+				probes: offered(probes, dot_ip, doh_ip)
 				declared: p.declared()
 			}
 			continue
 		}
+		// A provider keeps only the transports it actually offers, rather than
+		// scoring a total loss on one it never had.
+		mut own := plaintext.clone()
+		own << offered(probes, dot_ip, doh_ip)
+
 		out << Subject{
 			key: p.key
 			label: p.label
 			ip: p.udp4[0]
 			dot_ip: dot_ip
 			dot_host: p.dot
-			// A provider with no DoT endpoint keeps the plaintext probes and
-			// loses the encrypted ones, rather than scoring a total loss on a
-			// transport it never offered.
-			probes: if dot_ip == '' { plaintext } else { probes }
+			doh_ip: doh_ip
+			doh_host: p.doh_host()
+			doh_path: p.doh_path()
+			probes: own
 			declared: p.declared()
 		}
 	}
@@ -544,6 +596,7 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 	// point of dot_warm: the handshake is paid once, as every real client pays
 	// it. dot_fresh opens its own and closes it again per query.
 	mut dot := map[string]&core.DotTransport{}
+	mut doh := map[string]&core.DohTransport{}
 	mut pacer := core.new_pacer(core.rate_interval)
 	start := time.new_stopwatch()
 
@@ -555,6 +608,9 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 			t.close()
 		}
 		for _, mut t in dot {
+			t.close()
+		}
+		for _, mut t in doh {
 			t.close()
 		}
 	}
@@ -583,11 +639,18 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 			time.sleep(send_at - now)
 		}
 
-		out := query_once(step, target, subjects[idx], opts, ca_bundle, mut udp, mut tcp, mut dot) or {
+		out := query_once(step, target, subjects[idx], opts, ca_bundle, mut udp, mut tcp, mut dot, mut doh) or {
 			if !step.discard {
 				subjects[idx].failed[step.probe]++
 			}
 			continue
+		}
+
+		// Kept before the discard check, because the very first exchange is the
+		// discarded one and an endpoint that refuses the HTTP version refuses
+		// that one too. The reason would otherwise never reach the report.
+		if out.http_status != 0 {
+			subjects[idx].doh_status = out.http_status
 		}
 
 		// The warm-up query is sent like any other and its result thrown away:
@@ -595,7 +658,7 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 		if step.discard {
 			continue
 		}
-		if out.code != core.rcode_noerror {
+		if out.refused || out.code != core.rcode_noerror {
 			// An answer, and not a measurement. It is not a sample and it is
 			// not a dropped packet either.
 			subjects[idx].refused[step.probe]++
@@ -612,13 +675,23 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 struct Outcome {
 	ms   f64
 	code int
+	// refused marks an answer that came back and carried no measurement, for a
+	// reason the DNS rcode cannot express. A DoH endpoint that returns HTTP 505
+	// answered; it just will not speak the version this client speaks.
+	refused bool
+	// http_status is the status behind that refusal, so the report can say why
+	// and not only that. Zero for every probe that is not DoH.
+	http_status int
 }
 
-fn query_once(step core.Step, target core.Target, subject Subject, opts Options, ca_bundle string, mut udp map[string]&core.UdpTransport, mut tcp map[string]&core.TcpTransport, mut dot map[string]&core.DotTransport) !Outcome {
+fn query_once(step core.Step, target core.Target, subject Subject, opts Options, ca_bundle string, mut udp map[string]&core.UdpTransport, mut tcp map[string]&core.TcpTransport, mut dot map[string]&core.DotTransport, mut doh map[string]&core.DohTransport) !Outcome {
 	msg := core.build_query(query_name(step, opts.cold_zone), core.qtype_a)!
 
 	if step.probe in dot_probes {
 		return dot_query(step, subject, ca_bundle, msg, mut dot)
+	}
+	if step.probe == 'doh' {
+		return doh_query(step, subject, ca_bundle, msg, mut doh)
 	}
 
 	if step.probe == 'tcp' {
@@ -728,6 +801,59 @@ fn dot_query(step core.Step, subject Subject, ca_bundle string, msg []u8, mut do
 	}
 }
 
+// doh_query runs one query over HTTPS.
+//
+// The connection is kept, because HTTP/1.1 keep-alive is how a stub resolver
+// would use it and re-handshaking per query would measure the handshake. Unlike
+// dot_warm there is no fresh variant: the handshake cost is already published by
+// dot_fresh and would be the same two round trips here.
+fn doh_query(step core.Step, subject Subject, ca_bundle string, msg []u8, mut doh map[string]&core.DohTransport) !Outcome {
+	if subject.doh_ip == '' || subject.doh_host == '' {
+		return error('no DoH endpoint for ${subject.key}')
+	}
+	target := core.Target{
+		ip: subject.doh_ip
+		port: doh_port
+		timeout: dot_timeout
+	}
+
+	if step.provider_key !in doh {
+		mut t := &core.DohTransport{
+			hostname: subject.doh_host
+			path: subject.doh_path
+			ca_bundle: ca_bundle
+		}
+		t.open(target)!
+		doh[step.provider_key] = t
+	}
+	mut t := doh[step.provider_key] or { return error('no doh transport') }
+
+	if reply, ms := t.query(msg) {
+		return Outcome{
+			ms: ms
+			code: core.rcode(reply)
+		}
+	} else {
+		// An HTTP status is an answer, not a silence. Quad9's endpoint replies
+		// 505 to every HTTP/1.1 request because it serves DoH over h2 only, and
+		// V's stdlib has no h2 client; recording that as loss would blame the
+		// network for a documented limitation of this tool.
+		// Drop the connection either way. An endpoint that answered a status
+		// this client cannot use is free to close afterwards, and reusing a
+		// socket in that state turns one refusal into a run of read errors.
+		t.close()
+		doh.delete(step.provider_key)
+
+		if status := core.http_status_of(err.msg()) {
+			return Outcome{
+				refused: true
+				http_status: status
+			}
+		}
+		return err
+	}
+}
+
 // query_name is the name actually asked.
 //
 // For every probe but `cold` it is the plan's domain. `cold` has to ask
@@ -757,6 +883,7 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, best_rtt ?f64,
 			base: core.Metrics{
 				key: s.key
 				is_cache: s.is_cache
+				attempted: attempted_of(s, expected)
 				ecs_penalty_ms: median_penalty(edge, s.key)
 				offers_dot: s.dot_ip != ''
 				offers_ipv6: net.ipv6
@@ -806,6 +933,10 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, best_rtt ?f64,
 			reports << store.ProbeReport{
 				name: name
 				stats: core.compute_counted(subject.samples[name] or { []f64{} }, expected, subject.refused[name] or { 0 })
+				// Recorded on every DoH result, because an HTTP/1.1 measurement
+				// is not comparable with a browser's real h2 behaviour and a
+				// reader has no way to know which one this was.
+				http_version: if name == 'doh' { core.doh_http_version } else { '' }
 			}
 		}
 
@@ -882,6 +1013,7 @@ fn transports_used(probes []string) []string {
 			// contract names transports rather than probes.
 			'ecs' { ['udp', 'tcp'] }
 			'dot_fresh', 'dot_warm' { ['dot'] }
+			'doh' { ['doh'] }
 			else { ['udp'] }
 		}
 		for name in names {
@@ -891,6 +1023,11 @@ fn transports_used(probes []string) []string {
 		}
 	}
 	return out
+}
+
+// attempted_of is every query the run put to a subject, on any probe.
+fn attempted_of(s Subject, expected int) int {
+	return s.probes.filter(it != 'ecs').len * expected
 }
 
 // median_penalty is the figure the `edge` subscore divides by, absent for a
@@ -928,6 +1065,7 @@ fn metrics_from(samples []core.Samples) []core.Metrics {
 		out << core.Metrics{
 			key: s.base.key
 			is_cache: s.base.is_cache
+			attempted: s.base.attempted
 			warm: core.compute_counted(s.warm_ms, s.warm_expected, s.warm_refused)
 			cold: core.compute_counted(s.cold_ms, s.cold_expected, s.cold_refused)
 			dot_warm: core.compute_counted(s.dot_warm_ms, s.dot_warm_expected, s.dot_warm_refused)

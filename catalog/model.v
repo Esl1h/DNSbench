@@ -99,6 +99,43 @@ pub fn (p Provider) has_endpoint() bool {
 	return p.udp4.len > 0 || p.udp6.len > 0 || p.dot != '' || p.doh != ''
 }
 
+// doh_host and doh_path split the DoH URL into the name the certificate is
+// verified against and the request target.
+//
+// The URL is never handed to an HTTP client to resolve: that would put a lookup
+// inside every sample, through a resolver that may itself be under test.
+pub fn (p Provider) doh_host() string {
+	if !p.doh.starts_with('https://') {
+		return ''
+	}
+	rest := p.doh['https://'.len..]
+	return rest.all_before('/')
+}
+
+pub fn (p Provider) doh_path() string {
+	host := p.doh_host()
+	if host == '' {
+		return ''
+	}
+	rest := p.doh['https://'.len + host.len..]
+	return if rest == '' { '/' } else { rest }
+}
+
+// doh_address is the address to dial for DoH. The encrypted endpoints share an
+// address everywhere in this catalog, so it follows the DoT chain.
+pub fn (p Provider) doh_address() string {
+	if p.doh_host() == '' {
+		return ''
+	}
+	if p.dot4.len > 0 {
+		return p.dot4[0]
+	}
+	if p.udp4.len > 0 {
+		return p.udp4[0]
+	}
+	return ''
+}
+
 // dot_address is the address to dial for DoT, or empty when the entry cannot be
 // measured over TLS.
 //

@@ -10,6 +10,14 @@ comparability and `history` must be able to detect it.
 ## [Unreleased]
 
 ### Added
+- `core/doh.v`: DNS over HTTPS, RFC 8484, as `--probes doh`. The request is written by hand
+  over a TLS connection dialled to an IP literal, because `net.http` resolves the URL's
+  hostname itself and would put a lookup inside every sample, through a resolver that may be
+  under test. POST rather than GET, so nothing in between can serve a cached answer. Every
+  result carries `http_version: "1.1"`
+- `excluded: "unscored"`, for a provider measured only on probes that do not rank. An
+  encrypted-only entry asked for over DoH alone answered every question put to it and was
+  never asked one the score is built from; `unreachable` was the wrong word for that
 - `core/tls.v`: DNS over TLS, RFC 7858. `--probes dot-fresh` times connect, handshake and
   query together; `--probes dot-warm` holds one connection open and times only the query, as
   Android Private DNS, systemd-resolved, unbound and dnscrypt-proxy all do. Only `dot-warm`
@@ -114,6 +122,10 @@ comparability and `history` must be able to detect it.
   the link cannot carry
 
 ### Changed
+- `docs/METHODOLOGY.md` marked `doh` as scored while `docs/SCORING.md` defines `encrypted`
+  as `dot-warm` and nothing else. Resolved in SCORING's favour: HTTP/1.1 is the only version
+  V's stdlib speaks, several endpoints refuse it outright, and a subscore that quietly meant
+  "1.1 where the provider allowed it" would rank on an artefact of the client
 - `exclusion_for` reads `dot_warm` when a provider attempted no plaintext query at all.
   Empty warm figures were being read as silence, which reported an encrypted-only resolver
   that answered every question as unreachable

@@ -328,6 +328,7 @@
             "low_n",
             "unreachable",
             "refused",
+            "unscored",
             null
           ]
         },

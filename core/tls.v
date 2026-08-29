@@ -81,6 +81,39 @@ pub fn (t DotTransport) reusable() bool {
 	return true
 }
 
+// dial_tls opens a verified TLS connection to an address, checking the
+// certificate against a hostname that is supplied rather than looked up.
+//
+// Both encrypted transports go through here, so the trust decision is made in
+// exactly one place. Passing the hostname separately is what keeps a
+// system-resolver lookup out of every latency sample, and it is not a
+// verification bypass: the handshake still fails if the certificate does not
+// match the name.
+fn dial_tls(target Target, hostname string, ca_bundle string) !(&net.TcpConn, &ssl.SSLConn) {
+	if hostname == '' {
+		return error('a TLS connection needs a verification hostname')
+	}
+	if ca_bundle == '' {
+		return error('a TLS connection needs a CA bundle; V loads no system trust store')
+	}
+
+	mut tcp := net.dial_tcp(target.dial_address()!)!
+	tcp.set_read_timeout(target.timeout)
+	tcp.set_write_timeout(target.timeout)
+
+	mut conn := ssl.new_ssl_conn(validate: true, verify: ca_bundle) or {
+		tcp.close() or {}
+		return err
+	}
+	conn.connect(mut tcp, hostname) or {
+		tcp.close() or {}
+		return err
+	}
+	conn.set_read_timeout(target.timeout)
+
+	return tcp, conn
+}
+
 // open pays for the TCP handshake and the TLS handshake.
 //
 // Whoever measures the fresh-connection variant must time this call and not
@@ -89,28 +122,9 @@ pub fn (t DotTransport) reusable() bool {
 pub fn (mut t DotTransport) open(target Target) ! {
 	t.close()
 
-	if t.hostname == '' {
-		return error('dot transport needs a verification hostname')
-	}
-	if t.ca_bundle == '' {
-		return error('dot transport needs a CA bundle; V loads no system trust store')
-	}
-
-	t.tcp = net.dial_tcp(target.dial_address()!)!
-	t.tcp.set_read_timeout(target.timeout)
-	t.tcp.set_write_timeout(target.timeout)
-
-	mut conn := ssl.new_ssl_conn(validate: true, verify: t.ca_bundle) or {
-		t.tcp.close() or {}
-		return err
-	}
-	conn.connect(mut t.tcp, t.hostname) or {
-		t.tcp.close() or {}
-		return err
-	}
-	conn.set_read_timeout(target.timeout)
-
-	t.tls = conn
+	tcp, tls := dial_tls(target, t.hostname, t.ca_bundle)!
+	t.tcp = tcp
+	t.tls = tls
 	t.target = target
 	t.open_ = true
 }

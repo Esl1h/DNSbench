@@ -99,11 +99,18 @@ Three formats, one guarantee: **anything that consumes `--json` will keep workin
 
 - `declared` is separate from `capabilities` by design. `capabilities` is measured;
   `declared` is what the provider says. Consumers must not merge them.
-- `excluded` is `null`, or one of `"cache"`, `"low_n"`, `"unreachable"`, `"refused"`, with
-  the reason visible rather than the row silently absent. `"refused"` and `"unreachable"`
-  are not the same fact: a resolver that answers REFUSED, SERVFAIL or NXDOMAIN to every
-  query has answered, and calling that silence blames the network for a decision the
-  operator made.
+- `excluded` is `null`, or one of `"cache"`, `"low_n"`, `"unreachable"`, `"refused"`,
+  `"unscored"`, with the reason visible rather than the row silently absent. Three of those
+  describe a provider that did answer. `"refused"` is a resolver that replies REFUSED,
+  SERVFAIL or NXDOMAIN to everything: it answered, and calling that silence blames the network
+  for a decision the operator made. `"unscored"` is a provider measured only on probes that do
+  not rank, such as an encrypted-only entry asked for over DoH alone: it answered every
+  question put to it and was never asked one the score is built from.
+- `http_version` appears on DoH results only, and is always `"1.1"`. V's stdlib has no h2
+  client, so the figure is not comparable with a browser's real h2 behaviour and the output
+  says which one it is. Some endpoints, Quad9's among them, answer HTTP 505 to every HTTP/1.1
+  request because they serve DoH over h2 only; that is recorded as `refused` with a warning
+  naming the status, never as loss.
 - `refused` counts attempts the resolver answered with a non-NOERROR rcode. They produce no
   latency, so they never reach `n`, and they are not `loss`, which counts only attempts
   that drew no answer at all. A provider can therefore show `loss` of 0.0 and still be

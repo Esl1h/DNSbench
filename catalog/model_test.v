@@ -351,3 +351,61 @@ host = "example.com"
 		assert err.msg().contains('does not say which CDN')
 	}
 }
+
+fn test_a_doh_url_splits_into_a_hostname_and_a_path() ! {
+	// The URL is never handed to an HTTP client to resolve, so it has to be
+	// taken apart here: the hostname is what the certificate is checked against
+	// and what the Host header carries, the path is the request target.
+	c := embedded()!
+
+	mut seen := 0
+	for p in c.providers {
+		if p.doh == '' {
+			continue
+		}
+		seen++
+		assert p.doh_host() != ''
+		assert !p.doh_host().contains('/')
+		assert p.doh_path().starts_with('/')
+	}
+	assert seen > 0
+}
+
+fn test_control_d_keeps_its_profile_path() ! {
+	// Control D puts the profile in the path rather than the hostname, so a
+	// splitter that assumed /dns-query would silently measure the wrong profile.
+	c := embedded()!
+
+	for p in c.providers {
+		if p.key != 'controld-ads' {
+			continue
+		}
+		assert p.doh_host() == 'freedns.controld.com'
+		assert p.doh_path() == '/p2'
+	}
+}
+
+fn test_a_url_with_no_path_becomes_a_root_request() {
+	p := Provider{
+		key: 'p'
+		doh: 'https://dns.example.net'
+		udp4: ['1.1.1.1']
+	}
+
+	assert p.doh_host() == 'dns.example.net'
+	assert p.doh_path() == '/'
+}
+
+fn test_something_that_is_not_an_https_url_yields_nothing() {
+	// An entry with a malformed DoH field must not become a request to a
+	// hostname assembled out of the leftovers.
+	p := Provider{
+		key: 'p'
+		doh: 'dns.example.net/dns-query'
+		udp4: ['1.1.1.1']
+	}
+
+	assert p.doh_host() == ''
+	assert p.doh_path() == ''
+	assert p.doh_address() == ''
+}
