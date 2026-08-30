@@ -31,15 +31,14 @@ Read before touching related code:
 
 Do not invent measurement behaviour. Every probe's semantics are already defined.
 
-### 2. `.bootstrap/` is scratch and is never committed
+### 2. `.bootstrap/` was scratch and was never committed
 
-The `.bootstrap/` directory holds material used to start the project: the kickoff prompt and
-three V prototypes that compile against V 0.5.2. It is gitignored and is deleted once M0 is
-complete.
+The `.bootstrap/` directory held the material used to start the project: the kickoff prompt and
+three V prototypes. It was gitignored and does not exist in a clone.
 
-Never `git add` anything under it. Before it is deleted, every verified stdlib fact it
-demonstrates must be recorded in `docs/V-NOTES.md`, which is permanent. Anything not written
-there is lost.
+Nothing may depend on it. Every verified stdlib fact it demonstrated is in `docs/V-NOTES.md`,
+which is permanent, and that file is where any new one goes. If a copy of the directory is
+still lying around on a working machine, it is stale by several milestones.
 
 ### 3. V is under-represented in your training data — verify, never guess
 

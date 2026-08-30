@@ -1,8 +1,8 @@
 # Development plan
 
 The phase plan, the decisions already settled, and the facts verified against a compiler
-before any code existed. `.bootstrap/` held the material this was derived from and is deleted
-at the end of M0; nothing here may depend on it.
+before any code existed. The scratch directory this was derived from was deleted at the end of
+M0 and was never committed, so nothing here depends on it: a fresh clone has everything.
 
 Companion documents: `docs/CHECKLIST.md` is the day-one ordering, `docs/ROADMAP.md` is the
 milestone list, `docs/V-NOTES.md` is the verified V stdlib reference. This file is the bridge
@@ -16,6 +16,43 @@ on the conversation, because the documents are the memory and the conversation i
 Every session opens by reading `CLAUDE.md`, this file and `docs/V-NOTES.md`, and states its
 scope before writing anything. Scope creep across milestone boundaries is the
 failure mode this structure exists to prevent.
+
+### Working on another machine
+
+A clone plus V is the whole setup. Nothing is generated, nothing is downloaded at build time,
+and the catalog and domain sets are embedded.
+
+```sh
+git clone https://github.com/vlang/v /tmp/v && git -C /tmp/v checkout cbf4e85
+make -C /tmp/v && export PATH=/tmp/v:$PATH
+
+git clone git@github.com:Esl1h/DNSbench.git && cd DNSbench
+make check && make build
+```
+
+The V commit is the one every measurement in `docs/V-NOTES.md` was verified against, and the
+one `.github/workflows/release.yml` pins. A different V may still work; nothing in that file
+can be assumed to still be true if it does.
+
+Useful but not required: `knot-utils` for `kdig`, which is what every measurement is
+cross-checked against; `check-jsonschema`, without which `make schema` says so and skips;
+`shellcheck` and `groff` for the packaging files. Cutting a release locally additionally needs
+`musl-tools`, and the distribution packages need `rpmbuild` and `makepkg`, which is why
+`.github/workflows/release.yml` exists.
+
+Four things surprise every new checkout:
+
+- **`make build` compiles `cmd/`, not `cmd/cli.v`.** Naming the file compiles that file alone
+  and silently leaves the rest of the module out. That is how CI stayed red for three commits.
+- **A full run takes minutes.** Eight probes across sixteen providers pays a handshake per
+  encrypted probe and walks the plan in order. Use `--only` and `--rounds 1` while iterating.
+- **`--force` is needed wherever a tunnel interface is up**, and the refusal without it is
+  correct rather than an obstacle.
+- **The TUI cannot be driven from a pipe.** It needs a pty, and it says so and falls back if it
+  does not have one. Verifying a change to it means either running it by hand or driving it
+  through `pty.fork` with a small ANSI screen emulator: absolute cursor positioning from
+  `CSI y;xH`, clear on `CSI J`, SGR discarded, and a partial escape sequence at a read boundary
+  buffered rather than printed. That is what produced the captures in `docs/TUI.md`.
 
 Compile after every ~30 lines. `v -o /tmp/x .` is not optional, it is the only thing standing
 between plausible V and V that runs.

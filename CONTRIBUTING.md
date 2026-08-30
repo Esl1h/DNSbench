@@ -20,9 +20,11 @@ Number formatting is locale-independent (`.` decimal separator) everywhere.
 ## Tests
 
 ```sh
-v test .                        # unit
-v run testdata/golden_check.v   # golden-file output comparison
+make check                      # fmt, vet, tests, and the golden JSON against the schema
+make test                       # the tests alone
 ```
+
+`make check` is what CI runs, target for target, so a green checkout is a green pipeline.
 
 Required for any change to measurement code:
 

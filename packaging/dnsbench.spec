@@ -59,5 +59,5 @@ make install DESTDIR=%{buildroot} PREFIX=%{_prefix}
 %{_datadir}/fish/vendor_completions.d/dnsbench.fish
 
 %changelog
-* Sat Aug 29 2026 Esli Silva <eslih@pm.me> - 0.1.0-1
+* Sat Aug 29 2026 Esli Silva <not.announced@simplelogin.fr> - 0.1.0-1
 - First packaged release.

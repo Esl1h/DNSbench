@@ -1,4 +1,4 @@
-# Maintainer: Esli Silva <eslih@pm.me>
+# Maintainer: Esli Silva <not.announced@simplelogin.fr>
 #
 # Built from the release tarball rather than from git, so the package is a
 # function of a tag and a checksum. The version and the commit reach the binary
