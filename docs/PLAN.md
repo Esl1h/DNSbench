@@ -58,7 +58,7 @@ operator, and how it was chosen.
 
 ## Where this stands
 
-Phases 0 to 5 are done, which is M0 through M3. Every probe the milestone list names exists
+Phases 0 to 6 are done, which is M0 through M4. Every probe the milestone list names exists
 and both frontends are built. `make check` is clean: `v fmt -verify`, `v vet`, fifteen test
 files, and the golden run result validating against `schema/result.schema.json`.
 
@@ -72,11 +72,14 @@ files, and the golden run result validating against `schema/result.schema.json`.
 | `core/edge.v` | The ECS probe's arithmetic: per-host penalties against the run's own floor, the median, the misrouted count |
 | `core/capability.v` | The `dnssec` verdict with its CD control, the `filter` reading, majority over repeated readings |
 | `core/netinfo.v` | Resolvers, gateway, cache marking, tunnel detection, IPv6 availability |
+| `core/fetch.v` | One HTTPS GET over a connection this tool verifies itself, because V's `net.http` verifies nothing |
 | `core/geo.v` | The region cascade: public address over DNS, the ASN announcing it, its operator, the country to domain-set map, the timezone fallback |
 | `core/schedule.v` | Interleaved rounds, per-round shuffle, discarded warm-up pass, 10 qps pacing, per-provider probe lists |
 | `core/score.v` | The eight subscores, the five profiles, run-relative normalisation, five exclusion reasons |
 | `core/tier.v` | Bootstrap intervals on the composite score, tier and rank assignment |
 | `catalog/` | The embedded catalog, measured and declared tags held apart by the type, CDN hosts, DoT and DoH endpoints |
+| `catalog/minisign.v` | minisign verification, both the file signature and the one over the trusted comment |
+| `catalog/dnscrypt.v` | Where the optional catalog is fetched from and the key it is verified against |
 | `store/report.v` | JSON, CSV, table, markdown, exit codes |
 | `store/jsonl.v` | Append-only history with the network fingerprint on every line |
 | `cmd/cli.v` | All of the above, wired, plus the `Watcher` a frontend follows a run with |
@@ -175,11 +178,29 @@ every other output format in this tool prints for an absent figure. And the expo
 clipboard entry: reaching one would mean shelling out to a program that may not be installed,
 and the binary is dependency-free by design.
 
-### Next: M4, distribution
+### What M4 found
 
-`docs/ROADMAP.md` § M4: static release binaries for linux/amd64 and arm64, an AUR package and
-a Fedora Copr, VPM publication, a man page, shell completions for bash, zsh and fish,
-`dnsbench update` with minisign verification, and the reproducible-build documentation.
+**CI had been red since the TUI landed.** The workflow ran `v -prod -o dnsbench cmd/cli.v`,
+which compiles one file; the Makefile had moved to `cmd/` and the workflow had not. Every step
+now calls a Makefile target so the two cannot drift again.
+
+**Reproducibility has a third requirement nobody writes down.** Pinning the compiler and
+stamping the version as a define were expected. The third is the build path:
+`$embed_file` records the absolute path of the file it embedded, so the same source built in
+two directories produces two binaries differing by one unused string. `docs/RELEASING.md` fixes
+the path at `/build/dnsbench` for that reason.
+
+**V's `net.http` validates nothing.** Expired, self-signed and wrong-host certificates all
+return 200. `core/fetch.v` exists because of it, going through the same `dial_tls` the DoT and
+DoH probes use. On this path the minisign signature is the integrity control regardless, but
+shipping a client that accepts any certificate would have been a defect introduced knowingly.
+
+### Next: the optional catalog, Layer 2
+
+`dnsbench update` fetches and verifies the DNSCrypt list and nothing reads the cache. What is
+missing is the `sdns://` stamp parser, `catalog/merge.v`, `catalog/userconf.v` and the
+`--catalog dnscrypt`, `--require` and `--near` flags of `docs/DATA.md` § Layer 2. `--near`
+matters at that scale: probing four hundred resolvers fully is slow and impolite.
 
 ## Phases
 

@@ -532,3 +532,37 @@ Set with `-d version=0.1.0` on the command line. The second argument is the valu
 used when the flag is absent, so a plain `v -o dnsbench cmd/` still builds
 outside a checkout. This is how the version and the commit are stamped without
 rewriting a file to make a release.
+
+## net.http does not validate certificates
+
+Not "does not load a CA store", which would at least fail closed. It connects
+and returns 200:
+
+```
+https://expired.badssl.com/      -> status 200
+https://self-signed.badssl.com/  -> status 200
+https://wrong.host.badssl.com/   -> status 200
+```
+
+So `net.http` is unusable for anything whose integrity matters. `core/fetch.v`
+goes through the same `dial_tls` the DoT and DoH probes use, which passes a CA
+bundle and a hostname to `SSLConn.connect` and does verify, both of which were
+checked when DoT was built: connecting to `1.1.1.1:853` with an SNI of
+`dns.google` fails there.
+
+The name has to be resolved before the socket is opened, since that path dials an
+address. `core/geo.v`'s `ask_a` already does that through the machine's own
+resolver.
+
+## crypto.blake2b closes a digest with checksum(), not sum()
+
+```v
+mut digest := blake2b.new512()!
+digest.write(content)!
+digest.checksum() // 64 octets
+```
+
+`Digest` has no `sum`. `crypto.ed25519` is a thin API over `[]u8`:
+`generate_key() !(PublicKey, PrivateKey)`, `sign(private, message) ![]u8` and
+`verify(public, message, sig) !bool`, with `public_key_size`, `signature_size`
+and friends as constants.

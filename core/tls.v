@@ -48,6 +48,16 @@ pub fn find_ca_bundle(override string) !string {
 	return error('no CA bundle found; tried ${ca_bundle_candidates.join(', ')}. Pass --ca-bundle <path>')
 }
 
+// dial_tls_stream is dial_tls for a caller that only wants the TLS side.
+//
+// The socket underneath stays alive as long as the connection does; V's fmt
+// discards a `mut` on the second half of a multi-return assignment, which turned
+// the obvious form into a compile error, so the discard happens here instead.
+fn dial_tls_stream(target Target, hostname string, ca_bundle string) !&ssl.SSLConn {
+	_, tls := dial_tls(target, hostname, ca_bundle)!
+	return tls
+}
+
 // DotTransport is DNS over TLS on port 853.
 //
 // The wire format is the TCP one: RFC 7858 carries the same two-octet length

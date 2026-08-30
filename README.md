@@ -27,7 +27,9 @@ detection, over DNS and opt-out. The terminal interface, under
 `--tui`, with the table filling in live, sorting, filtering, search, a per-provider detail
 view, and profile cycling that re-ranks what was measured without measuring it again.
 
-**Not built yet.** The `history` and `update` subcommands. The config file, which is step 2 of
+**Not built yet.** The `history` subcommand, and the `--catalog dnscrypt` half of the optional
+catalog: `dnsbench update` fetches and verifies it, but the `sdns://` stamp parser that would
+turn it into providers does not exist. The config file, which is step 2 of
 the region cascade. The regional domain sets, so the detected region travels in the output and
 does not yet change which names are queried. The pinned Tranco domain set, for which eight
 names stand in under the honest label `builtin:top8`. DoH is HTTP/1.1 only, because V's stdlib has
@@ -135,6 +137,24 @@ catalog, because `cold` measures the hop from a resolver to the authoritative an
 authoritative run by one of the resolvers under test would hand that resolver an advantage no
 column would explain. `docs/DATA.md` has the reasoning, the records, and the verification
 commands for pointing the flag at your own zone instead.
+
+### The optional DNSCrypt catalog
+
+```sh
+dnsbench update
+```
+
+Fetches the DNSCrypt public-resolvers list, several hundred resolvers, and verifies its
+minisign signature against a key embedded in this binary. Verification is mandatory, there is
+no flag to skip it, and a file that fails it is discarded with exit 4 while whatever was cached
+before is left alone. The transport is not trusted and does not need to be; the signature is
+what establishes integrity.
+
+The list is not the default and never becomes it. Its own header warns that it includes
+servers which censor, which do not validate DNSSEC, and which collect and monetise queries, so
+ranking four hundred arbitrary resolvers by latency and crowning a winner would be
+irresponsible. Nothing reads the cache yet: opting in with `--catalog dnscrypt` is a later
+release.
 
 ### Exit codes
 

@@ -136,11 +136,12 @@ reported as finished when it is not:
 
 ## Not yet done
 
-**Signed release artifacts.** `docs/ROADMAP.md` § M4 asks for `dnsbench update`
-with minisign verification. No signing key exists yet, so no artifact is signed
-and there is nothing for an update command to verify. Creating the key is a
-decision about key custody, not a coding task, and it blocks that item rather
-than the rest of the release.
+**Signed release artifacts.** Nothing published here is signed. That is a
+separate question from `dnsbench update`, which verifies **DNSCrypt's** catalog
+against **DNSCrypt's** published key and needs no key of ours; that is built and
+`catalog/minisign.v` is the verifier. Signing our own artifacts would need a key
+and a decision about where it lives, and is not on the milestone list. The
+verifier would be reusable for it if that decision is ever taken.
 
 **Verification of the workflow itself.** Everything above that can be run from a
 checkout has been: `make release`, `make install` into a staging root, the man

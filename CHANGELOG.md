@@ -24,6 +24,12 @@ comparability and `history` must be able to detect it.
 - Distribution: a man page, completions for bash, zsh and fish, a `PKGBUILD`, a Fedora spec,
   `make install` with `DESTDIR` and `PREFIX`, `make release`, a release workflow and
   `docs/RELEASING.md` with what makes a build reproducible
+- `dnsbench update`: fetches the DNSCrypt public-resolvers list and verifies its minisign
+  signature, both the file's and the one over the trusted comment, against a key embedded in
+  the binary. Mandatory, with no flag to skip it, and exit 4 on failure. Nothing reads the
+  cache yet: the stamp parser and `--catalog dnscrypt` are the next piece
+- `core/fetch.v`: an HTTPS GET over a connection this tool verifies itself, because V's
+  `net.http` returns 200 for expired, self-signed and wrong-host certificates alike
 - `core/capability.v`: the `dnssec` and `filter` probes. `dnssec` asks a deliberately broken
   zone twice, once ordinarily and once with the CD bit, so that a test zone that has broken
   or a path that eats the response reads as unknown rather than as every resolver validating.

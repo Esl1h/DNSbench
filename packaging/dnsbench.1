@@ -4,6 +4,8 @@ dnsbench \- rank DNS resolvers from your own connection, including CDN edge qual
 .SH SYNOPSIS
 .B dnsbench
 .RI [ options ]
+.br
+.B dnsbench update
 .SH DESCRIPTION
 .B dnsbench
 measures and ranks DNS resolvers from the link it is run on, over UDP, TCP,
@@ -110,6 +112,24 @@ Print the version and the commit it was built from.
 .TP
 .BR \-h ", " \-\-help
 Print the flag list the binary actually accepts.
+.SH UPDATE
+.PP
+.B dnsbench update
+fetches the DNSCrypt public\-resolvers list and verifies its minisign signature
+against a key that ships in the binary, then caches both under
+.IR $XDG_CACHE_HOME/dnsbench/ .
+.PP
+Verification is mandatory and there is no flag to skip it. A file that fails it
+is discarded, whatever was cached before is left alone, and the exit status is
+4. The transport is not trusted and does not need to be: the signature is what
+establishes integrity, and a mirror that lies is caught.
+.PP
+The list is
+.B not
+used by default and never becomes the default. Its own header warns that it
+includes servers which censor, which do not validate DNSSEC, and which collect
+and monetise queries, so ranking them all by latency and crowning a winner would
+be irresponsible. Nothing reads the cache yet; opting in is a later release.
 .SH PROBES
 .TP
 .B warm
@@ -181,12 +201,25 @@ Unset or \fBdumb\fR sends \fB\-\-tui\fR to the plain table.
 .B TZ
 Read only as the last step of region detection, when the lookup was skipped or
 did not answer.
+.TP
+.B XDG_CACHE_HOME
+Where
+.B dnsbench update
+writes. Defaults to
+.IR ~/.cache .
 .SH FILES
 .TP
 .I ~/.local/share/dnsbench/runs.jsonl
 Conventional location for the history file. Nothing is written there unless
 .B \-\-history
 names it.
+.TP
+.I $XDG_CACHE_HOME/dnsbench/public-resolvers.md
+The verified DNSCrypt catalog and its signature, written by
+.BR "dnsbench update" .
+Falls back to
+.I ~/.cache
+when the variable is unset.
 .SH EXAMPLES
 .PP
 Rank every provider in the catalog over UDP:

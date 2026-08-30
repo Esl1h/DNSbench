@@ -169,16 +169,23 @@ fn read_http_head(mut conn ssl.SSLConn) !(int, map[string]string) {
 // encoding parsed loosely produces a body that looks like a DNS message and is
 // not one.
 fn content_length(headers map[string]string) !int {
+	return content_length_max(headers, max_doh_response, 'doh response')
+}
+
+// content_length_max is the same rule with the caller's ceiling, because a DNS
+// message and a catalog file are not the same size and neither should be read
+// with the other's limit.
+fn content_length_max(headers map[string]string, max int, subject string) !int {
 	if 'transfer-encoding' in headers {
-		return error('doh endpoint used transfer-encoding ${headers['transfer-encoding']}, which this client does not read')
+		return error('endpoint used transfer-encoding ${headers['transfer-encoding']}, which this client does not read')
 	}
-	raw := headers['content-length'] or { return error('doh response carried no content-length') }
+	raw := headers['content-length'] or { return error('${subject} carried no content-length') }
 	length := raw.int()
 	if length <= 0 {
-		return error('doh response declared a content-length of ${raw}')
+		return error('${subject} declared a content-length of ${raw}')
 	}
-	if length > max_doh_response {
-		return error('doh response declared ${length} octets, over the ${max_doh_response} a DNS message can be')
+	if length > max {
+		return error('${subject} declared ${length} octets, over the ${max} allowed')
 	}
 	return length
 }

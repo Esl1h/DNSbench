@@ -55,12 +55,16 @@ point.
 - [x] AUR package, Fedora Copr: the `PKGBUILD` and the spec, in `packaging/`
 - [x] `v install` / VPM: `v.mod` is the manifest; publication needs an account
 - [x] man page, shell completions (bash, zsh, fish)
-- [ ] `dnsbench update` with minisign verification: blocked on a signing key
+- [x] `dnsbench update` with minisign verification
 - [x] Reproducible-build documentation: `docs/RELEASING.md`
 
 The three items that need an account rather than code, the GitHub release, AUR
 and Copr, are listed in `docs/RELEASING.md` § Steps that need an account so a
 release is not reported as finished when it is not.
+
+`update` fetches and verifies. Nothing reads the cache yet: the `sdns://` stamp
+parser and `--catalog dnscrypt` are Layer 2 of `docs/DATA.md` and are the next
+piece, not part of this milestone's line.
 
 ### M5 — Beyond
 

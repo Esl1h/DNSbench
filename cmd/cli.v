@@ -58,11 +58,27 @@ fn main() {
 	// the transport already knows how to report.
 	os.signal_ignore(.pipe)
 
-	opts := parse_args(os.args[1..]) or {
+	mut args := os.args[1..].clone()
+	// One subcommand, and it is not a measurement: it fetches the optional
+	// catalog and verifies it. Everything else is flags.
+	updating := args.len > 0 && args[0] == 'update'
+	if updating {
+		args = args[1..].clone()
+	}
+
+	opts := parse_args(args) or {
 		eprintln(err.msg())
 		eprintln('')
 		usage()
 		exit(store.exit_usage)
+	}
+
+	if updating {
+		update(opts) or {
+			eprintln('dnsbench: ${err.msg()}')
+			exit(store.exit_catalog_verification)
+		}
+		return
 	}
 
 	if opts.tui {
@@ -98,6 +114,66 @@ fn main() {
 	exit(store.exit_code(result))
 }
 
+// update fetches the DNSCrypt resolver list and verifies its signature.
+//
+// The transport is not trusted and does not need to be: the file is verified
+// against a key that ships in this binary, so a mirror that lies is caught. What
+// the transport does have to be is authenticated at all, which is why this goes
+// through core.fetch and not through V's HTTP client. docs/V-NOTES.md § net.http
+// does not validate certificates.
+//
+// A failure to verify is exit 4 and leaves whatever was cached before untouched.
+// There is no flag to skip it.
+fn update(opts Options) ! {
+	net := core.detect()
+	resolver := first_resolver(net)
+	if resolver == '' {
+		return error('no resolver configured, so nothing can be looked up')
+	}
+	ca_bundle := core.find_ca_bundle(opts.ca_bundle)!
+	key := catalog.parse_minisign_key(catalog.dnscrypt_minisign_key)!
+
+	mut failures := []string{}
+	for source in catalog.dnscrypt_sources {
+		body := core.fetch(url: source, resolver: resolver, ca_bundle: ca_bundle) or {
+			failures << '${source}: ${err.msg()}'
+			continue
+		}
+		raw := core.fetch(url: '${source}.minisig', resolver: resolver, ca_bundle: ca_bundle) or {
+			failures << '${source}.minisig: ${err.msg()}'
+			continue
+		}
+
+		signature := catalog.parse_minisign_signature(raw.bytestr())!
+		// Not `continue`: a mirror that serves a file failing verification is a
+		// different event from one that is unreachable, and trying the next
+		// mirror after it would be shopping for a copy that passes.
+		catalog.verify_minisign(body, signature, key)!
+
+		directory := cache_directory()
+		os.mkdir_all(directory)!
+		path := os.join_path(directory, catalog.dnscrypt_cache_name)
+		os.write_file(path, body.bytestr())!
+		os.write_file('${path}.minisig', raw.bytestr())!
+
+		println('verified ${body.len} octets from ${source}')
+		println('  ${signature.trusted_comment}')
+		println('cached at ${path}')
+		return
+	}
+	return error('no source could be fetched:\n       ' + failures.join('\n       '))
+}
+
+// cache_directory follows the XDG base directory specification, because a tool
+// that scatters files in a home directory is a tool people uninstall.
+fn cache_directory() string {
+	base := os.getenv('XDG_CACHE_HOME')
+	if base != '' {
+		return os.join_path(base, 'dnsbench')
+	}
+	return os.join_path(os.home_dir(), '.cache', 'dnsbench')
+}
+
 // version_line is what `--version` prints and what a bug report should carry.
 // The commit is absent from a build that was not cut from a repository, which
 // is a fact about that build rather than something to paper over.
@@ -110,6 +186,7 @@ fn version_line() string {
 
 fn usage() {
 	eprintln('usage: dnsbench [options]')
+	eprintln('       dnsbench update            fetch and verify the DNSCrypt catalog')
 	eprintln('')
 	eprintln('  --profile <name>   ${core.profiles.keys().join(', ')}  (default: balanced)')
 	eprintln('  --only <keys>      comma-separated provider keys')
