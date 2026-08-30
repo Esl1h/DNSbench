@@ -16,17 +16,21 @@ jobs:
           make -C /tmp/v
           echo "/tmp/v" >> "$GITHUB_PATH"
 
+      # Every step below goes through the Makefile rather than repeating the
+      # command, because the two drifted once: the build moved from a file to a
+      # directory when the frontend grew a second file, and this workflow kept
+      # compiling one file of a two-file module.
       - name: Format check
-        run: v fmt -verify .
+        run: make fmt-check
 
       - name: Vet
-        run: v vet .
+        run: make vet
 
       - name: Build
-        run: v -prod -o dnsbench cmd/cli.v
+        run: make build
 
       - name: Test
-        run: v test .
+        run: make test
 
       - name: Validate golden JSON against schema
         run: |
