@@ -2,6 +2,8 @@
 .bootstrap/
 
 dnsbench
+# release artifacts, rebuilt from a tag by `make release`
+dist/
 # `v <file>_test.v` leaves its compiled binary beside the source
 *_test
 *.o
