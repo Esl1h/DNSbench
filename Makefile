@@ -1,5 +1,5 @@
 BIN     := dnsbench
-SRC     := cmd/cli.v
+SRC     := cmd/
 VFLAGS  := -prod
 
 .PHONY: all build dev run test fmt fmt-check vet check schema clean

@@ -29,6 +29,26 @@ fn test_a_full_command_line_parses() ! {
 	assert o.force
 }
 
+fn test_the_interface_flags_stand_alone_and_the_palette_takes_a_name() ! {
+	o := parse_args(['--tui', '--no-color', '--palette', 'colorblind', '--rounds', '2'])!
+
+	assert o.tui
+	assert o.no_color
+	assert o.palette == 'colorblind'
+	assert o.rounds == 2
+}
+
+fn test_an_unknown_palette_is_refused_by_name() {
+	// Falling back to the default palette would hand a colourblind reader the
+	// green and red table they asked not to have, and say nothing about it.
+	if _ := parse_args(['--palette', 'neon']) {
+		assert false
+	} else {
+		assert err.msg().contains('unknown palette')
+		assert err.msg().contains('colorblind')
+	}
+}
+
 fn test_an_unknown_profile_is_refused_by_name() {
 	// Falling back to balanced would rank under weights the user did not ask
 	// for and did not see.

@@ -9,8 +9,8 @@ Your question is *"which resolver is fast from my link, on my ISP, right now, an
 me to the right CDN edge afterwards?"*
 
 `dnsbench` answers that. It is a single static binary with no runtime dependencies, no
-telemetry, and no network access beyond the measurement itself. A CLI today, a TUI next to it
-when M3 lands.
+telemetry, and no network access beyond the measurement itself. A CLI, and a full-screen
+terminal interface beside it under `--tui`.
 
 ## Status
 
@@ -18,17 +18,19 @@ Pre-release, and the gap between what is specified and what is built is wide eno
 up front. The documents in `docs/` are the specification and were written before any code;
 they describe the finished tool, not the current binary.
 
-**Working today.** UDP and TCP transports. The `warm`, `cold` and `tcp` probes. The composite
-score with five weight profiles, run-relative normalisation, and tiers from a bootstrap
-interval on the score. Table, JSON, CSV and Markdown output against a versioned schema.
-Append-only JSONL history. Local caches and system resolvers measured and labelled apart.
+**Working today.** UDP, TCP, DoT and DoH transports. All nine probes: `warm`, `tcp`, `cold`,
+`ecs`, `dot-fresh`, `dot-warm`, `doh`, `dnssec` and `filter`. The composite score with five
+weight profiles, run-relative normalisation, and tiers from a bootstrap interval on the score.
+Table, JSON, CSV and Markdown output against a versioned schema. Append-only JSONL history.
+Local caches and system resolvers measured and labelled apart. The terminal interface, under
+`--tui`, with the table filling in live, sorting, filtering, search, a per-provider detail
+view, and profile cycling that re-ranks what was measured without measuring it again.
 
-**Not built yet.** DoT and DoH, so `--probes` accepts three names and not six. The ECS edge
-probe, which is the headline claim below and lands in M2. The DNSSEC and filtering probes.
-The TUI: `docs/TUI.md` specifies it in full and no code implements it, so there is no `--tui`
-flag. The `history` and `update` subcommands. ASN and region detection, which is why every
-run reports `region: global`. The pinned Tranco domain set, for which eight names stand in
-under the honest label `builtin:top8`.
+**Not built yet.** The `history` and `update` subcommands. ASN and region detection, which is
+why every run reports `region: global`. The pinned Tranco domain set, for which eight names
+stand in under the honest label `builtin:top8`. DoH is HTTP/1.1 only, because V's stdlib has
+no HTTP/2 client, and every DoH result says so; two providers serve DoH over h2 alone and are
+recorded as refusing rather than as unreachable.
 
 `docs/PLAN.md` has the state of every module and what each remaining phase involves.
 `docs/ROADMAP.md` has the milestones.
@@ -38,20 +40,19 @@ under the honest label `builtin:top8`.
 | Capability | GRC Bench | dnsdiag | dnspyre | Web tools | dnsbench |
 |---|---|---|---|---|---|
 | UDP / TCP | yes | yes | yes | no | **shipped** |
-| DoT | no | yes | yes | no | M2 |
-| DoH | no | yes | yes | yes, only | M2 |
+| DoT | no | yes | yes | no | **shipped** |
+| DoH | no | yes | yes | yes, only | **shipped**, h1.1 |
 | Forced cold cache | yes | no | partial | no | **shipped** |
 | p95 / jitter | yes | yes | yes | some | **shipped** |
-| Persistent vs. fresh handshake | no | no | yes | n/a | M2 |
-| **CDN edge latency (ECS quality)** | no | no | no | no | **M2** |
+| Persistent vs. fresh handshake | no | no | yes | n/a | **shipped** |
+| **CDN edge latency (ECS quality)** | no | no | no | no | **shipped** |
 | Local / system resolver, correctly labelled | partial | no | no | no | **shipped** |
 | Composite score with published weights | yes | no | no | some | **shipped** |
 | Reproducible, versioned datasets | no | no | no | no | **shipped** |
 
-The bold row is the whole point, and it is also the row that is not built yet. A resolver that
-wins by 2 ms on lookup latency and loses by 90 ms on CDN edge selection has lost. No public
-tool measures that today, which is the reason this project exists rather than a patch to one
-of the others.
+The bold row is the whole point. A resolver that wins by 2 ms on lookup latency and loses by
+90 ms on CDN edge selection has lost. No public tool measures that, which is the reason this
+project exists rather than a patch to one of the others.
 
 ## The three claims this project makes
 
@@ -88,6 +89,23 @@ dnsbench --history ~/.local/share/dnsbench/runs.jsonl
 
 A run refuses to start when a tunnel interface is up, because it would be measuring the tunnel
 and not the link. `--force` overrides it and says so in the output.
+
+### The terminal interface
+
+```sh
+dnsbench --tui --probes warm,cold,ecs,dot-warm,dnssec,filter --cold-zone probe.dnsbench.esli.blog
+```
+
+The table fills in while the run happens rather than appearing at the end. `s` sorts, `tab`
+changes which probe fills the latency columns, `/` searches, `f` filters, `enter` opens a
+per-provider detail view with the per-CDN-host edge table, and `e` writes the run out in any of
+the published formats. `p` cycles the weight profile and re-ranks what has already been
+measured without measuring anything again, which is the honest way to show how much of the
+answer is the network and how much is the weighting.
+
+`--no-color` and `NO_COLOR` make it plain text; `--palette colorblind` swaps green and red for
+blue and orange. If `TERM` is unset or `dumb`, or the output is being piped, `--tui` says so
+and falls back to the plain table. `docs/TUI.md` has the layout and the full key list.
 
 ### The cold probe
 

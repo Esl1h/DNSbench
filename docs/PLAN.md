@@ -57,9 +57,9 @@ operator, and how it was chosen.
 
 ## Where this stands
 
-Phases 0 to 4 are done, which is M0 through M2. Every probe the milestone list names exists.
-`make check` is clean: `v fmt -verify`, `v vet`, fourteen test files, and the golden run
-result validating against `schema/result.schema.json`.
+Phases 0 to 5 are done, which is M0 through M3. Every probe the milestone list names exists
+and both frontends are built. `make check` is clean: `v fmt -verify`, `v vet`, fifteen test
+files, and the golden run result validating against `schema/result.schema.json`.
 
 | Module | What it does |
 |---|---|
@@ -77,7 +77,9 @@ result validating against `schema/result.schema.json`.
 | `catalog/` | The embedded catalog, measured and declared tags held apart by the type, CDN hosts, DoT and DoH endpoints |
 | `store/report.v` | JSON, CSV, table, markdown, exit codes |
 | `store/jsonl.v` | Append-only history with the network fingerprint on every line |
-| `cmd/cli.v` | All of the above, wired |
+| `cmd/cli.v` | All of the above, wired, plus the `Watcher` a frontend follows a run with |
+| `cmd/tui.v` | The `term.ui` frame loop, the keys, the drawing, and the palette |
+| `cmd/tui_view.v` | What the frontend draws: which columns fit, what each cell says, what tone it earned, how the rows are ordered and filtered |
 
 A full run today:
 
@@ -143,17 +145,37 @@ same block page from every resolver.
 - **`--require`.** METHODOLOGY § filter says the filtering verdict is usable as a filter,
   `--require filtering`. Nothing implements the flag.
 
-### Next: M3, the TUI
+### What the TUI cost, and what it changed underneath
 
-`docs/TUI.md` specifies it in full over 183 lines and no code implements it, so there is no
-`--tui` flag and the README says so. It is the whole of the milestone: the `term.ui` frame
-loop, the live table fed from the scheduler, sorting and filtering, the detail view, profile
-cycling with live re-ranking and no re-measurement, colour semantics with `NO_COLOR` and a
-colourblind palette, and a graceful fall back when `TERM` is unset or `dumb`.
+The frame loop was the smaller half. Three things in the layer below had to change, and each
+was a bug the CLI had been hiding.
 
-The table the CLI already prints is the layout to start from. It carries `EDGE`, `MIS` and
-`DoT` columns and the measured-versus-declared badge split that TUI.md describes, so the
-column set is settled and the work is the frame loop rather than the design.
+**Loss had no live denominator.** `assemble` divided by the run's full expected count, so a
+run watched while it happened showed every provider at a hundred per cent loss falling
+steadily towards the truth. Attempts are now counted at dispatch, per provider and per probe,
+which is also more honest for an interrupted run: it divides by what was sent rather than by
+what was planned. At the end of a complete run the two numbers are identical, so no published
+figure moved.
+
+**A frontend could not re-rank.** `p` re-ranks under a different weight profile without
+measuring again, which needs the samples and not the table. `build_samples` came out of
+`assemble` so both callers share it, and the samples travel with every snapshot.
+
+**`term.ui` panics rather than erroring when there is no TTY**, and its default signal list
+would have reinstalled the SIGPIPE handler that M2 removed to keep an idle DoT connection from
+killing the run. Both are handled at the call site and recorded in `docs/V-NOTES.md`.
+
+Two deviations from `docs/TUI.md` as written, both now in the document. Rows with nothing
+measured yet carry a dash rather than the `····` the mock showed, because the dash is what
+every other output format in this tool prints for an absent figure. And the export menu has no
+clipboard entry: reaching one would mean shelling out to a program that may not be installed,
+and the binary is dependency-free by design.
+
+### Next: M4, distribution
+
+`docs/ROADMAP.md` § M4: static release binaries for linux/amd64 and arm64, an AUR package and
+a Fedora Copr, VPM publication, a man page, shell completions for bash, zsh and fish,
+`dnsbench update` with minisign verification, and the reproducible-build documentation.
 
 ## Phases
 

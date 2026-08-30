@@ -37,6 +37,9 @@ struct Options {
 	timeout   time.Duration = 2 * time.second
 	cold_zone string
 	ca_bundle string
+	tui       bool
+	no_color  bool
+	palette   string = 'default'
 }
 
 fn main() {
@@ -54,7 +57,19 @@ fn main() {
 		exit(store.exit_usage)
 	}
 
-	result := run(opts) or {
+	if opts.tui {
+		// The TUI owns the terminal, the run and the exit code. It falls back to
+		// this path itself when the terminal cannot host it.
+		if reason := tui_unavailable() {
+			eprintln('dnsbench: ${reason}, falling back to the plain table')
+		} else {
+			run_tui(opts)
+			return
+		}
+	}
+
+	mut watcher := Watcher(SilentWatcher{})
+	result := run(opts, mut watcher) or {
 		eprintln('dnsbench: ${err.msg()}')
 		exit(store.exit_measurement_error)
 	}
@@ -88,6 +103,9 @@ fn usage() {
 	eprintln('  --timeout <ms>     per-query timeout (default: 2000)')
 	eprintln('  --cold-zone <zone> wildcard zone for the cold probe')
 	eprintln('  --ca-bundle <path> CA bundle for DoT, overriding the system cascade')
+	eprintln('  --tui              watch the run in a full-screen terminal interface')
+	eprintln('  --palette <name>   ${known_palettes.join(', ')}  (TUI only, default: default)')
+	eprintln('  --no-color         plain text in the TUI, as NO_COLOR does')
 	eprintln('  --force            measure even with a tunnel interface up')
 	eprintln('  --seed <n>         fix the shuffle, for a reproducible plan')
 	eprintln('  -h, --help')
@@ -95,10 +113,12 @@ fn usage() {
 	eprintln('Exit: 0 ok, 1 measured with errors, 2 usage, 3 nothing reachable.')
 }
 
-// value_options are the flags that take an argument. --force and the help
-// flags stand alone.
+// value_options are the flags that take an argument. standalone_options and the
+// help flags stand alone.
 const value_options = ['--profile', '--only', '--rounds', '--probes', '--format', '--history',
-	'--timeout', '--cold-zone', '--ca-bundle', '--seed']
+	'--timeout', '--cold-zone', '--ca-bundle', '--seed', '--palette']
+
+const standalone_options = ['--force', '--tui', '--no-color']
 
 fn parse_args(args []string) !Options {
 	mut o := Options{}
@@ -110,8 +130,18 @@ fn parse_args(args []string) !Options {
 			usage()
 			exit(store.exit_usage)
 		}
-		if arg == '--force' {
-			o = Options{ ...o, force: true }
+		if arg in standalone_options {
+			match arg {
+				'--force' {
+					o = Options{ ...o, force: true }
+				}
+				'--tui' {
+					o = Options{ ...o, tui: true }
+				}
+				else {
+					o = Options{ ...o, no_color: true }
+				}
+			}
 			i++
 			continue
 		}
@@ -178,6 +208,12 @@ fn parse_args(args []string) !Options {
 			'--ca-bundle' {
 				o = Options{ ...o, ca_bundle: value }
 			}
+			'--palette' {
+				if value !in known_palettes {
+					return error('unknown palette "${value}"; known: ${known_palettes.join(', ')}')
+				}
+				o = Options{ ...o, palette: value }
+			}
 			'--seed' {
 				n := u32(value.u64())
 				o = Options{ ...o, seed: [n, n ^ u32(0x9e3779b9)] }
@@ -215,6 +251,12 @@ struct Subject {
 mut:
 	samples map[string][]f64
 	failed  map[string]int
+	// attempts is how many counted queries were actually put to this subject per
+	// probe, the warm-up excluded. It is the denominator of loss, and it is
+	// counted rather than assumed so that a run watched while it happens shows
+	// the loss it has seen so far instead of the loss of every query it has yet
+	// to send.
+	attempts map[string]int
 	// doh_status is the first HTTP status a DoH endpoint answered with that was
 	// not 200, kept so the report can say why rather than only that.
 	doh_status int
@@ -223,7 +265,7 @@ mut:
 	refused map[string]int
 }
 
-fn run(opts Options) !store.RunResult {
+fn run(opts Options, mut watcher Watcher) !store.RunResult {
 	started := time.now()
 	net := core.detect()
 
@@ -307,7 +349,13 @@ fn run(opts Options) !store.RunResult {
 		seed: opts.seed
 	)!
 
-	execute(plan, mut subjects, opts, ca_bundle)!
+	watcher.begin(RunContext{
+		net: net
+		cat: cat
+		started: started
+		warnings: warnings
+	})
+	execute(plan, mut subjects, opts, ca_bundle, mut watcher)!
 
 	mut capabilities := map[string]Capability{}
 	if probes.any(it in capability_probes) {
@@ -340,7 +388,11 @@ fn run(opts Options) !store.RunResult {
 	}
 
 	duration := f64(time.since(started).microseconds()) / 1_000_000.0
-	return assemble(subjects, edge, capabilities, best_rtt, opts, net, cat, started, duration, warnings)
+	result := assemble(subjects, edge, capabilities, best_rtt, opts, net, cat, started, duration, warnings, core.BootstrapSpec{ seed: opts.seed })
+	// The samples travel with the result so that a frontend can re-rank under a
+	// different weighting without measuring anything again. docs/TUI.md § p.
+	watcher.finish(result, build_samples(subjects, edge, capabilities, net.ipv6), best_rtt)
+	return result
 }
 
 // timed_probes is the probe list the plan walks: everything but the edge probe.
@@ -721,12 +773,48 @@ fn select_subjects(cat catalog.Catalog, opts Options, net core.NetInfo, probes [
 	return out
 }
 
+// Watcher is how a frontend follows a run that is still happening.
+//
+// The core knows nothing about frontends, and this does not change that: it is
+// declared and implemented here, in the command layer, and the scheduler and
+// the probes never see it. Returning false aborts the walk, which is what the
+// TUI's `a` key does.
+interface Watcher {
+mut:
+	begin(ctx RunContext)
+	tick(step int, total int, subjects []Subject) bool
+	finish(result store.RunResult, samples []core.Samples, best_rtt ?f64)
+}
+
+// RunContext is what a run knows about itself before it starts measuring:
+// enough for a frontend to assemble a result out of partial samples without
+// waiting for the run to end.
+struct RunContext {
+	net      core.NetInfo
+	cat      catalog.Catalog
+	started  time.Time
+	warnings []store.Warning
+}
+
+// SilentWatcher is what the plain CLI passes. A run nobody is watching pays one
+// call per step for it and nothing else.
+struct SilentWatcher {}
+
+fn (mut w SilentWatcher) begin(_ctx RunContext) {}
+
+fn (mut w SilentWatcher) tick(_step int, _total int, _subjects []Subject) bool {
+	return true
+}
+
+fn (mut w SilentWatcher) finish(_result store.RunResult, _samples []core.Samples, _best_rtt ?f64) {
+}
+
 // execute walks the plan and fills in the samples.
 //
 // A step that fails contributes to loss and nothing else; the run never stops
 // for one bad provider, because the networks where that happens are exactly the
 // ones worth measuring. docs/ARCHITECTURE.md § Failure policy.
-fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle string) ! {
+fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle string, mut watcher Watcher) ! {
 	mut udp := map[string]&core.UdpTransport{}
 	mut tcp := map[string]&core.TcpTransport{}
 	// One TLS connection per provider, held for the run. That is the whole
@@ -752,7 +840,13 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 		}
 	}
 
-	for step in plan {
+	for sent, step in plan {
+		// The watcher sees every step, including the ones with no subject and the
+		// discarded warm-up: a progress bar that skipped them would stall.
+		if !watcher.tick(sent, plan.len, subjects) {
+			return error(abort_message)
+		}
+
 		mut idx := -1
 		for i, s in subjects {
 			if s.key == step.provider_key {
@@ -774,6 +868,12 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 		send_at := pacer.reserve(step.provider_key, now, core.jitter_factor())
 		if send_at > now {
 			time.sleep(send_at - now)
+		}
+
+		if !step.discard {
+			// Counted at dispatch rather than on the way out, so that a partial run
+			// divides its losses by what it sent and not by what it planned.
+			subjects[idx].attempts[step.probe]++
 		}
 
 		out := query_once(step, target, subjects[idx], opts, ca_bundle, mut udp, mut tcp, mut dot, mut doh) or {
@@ -1010,44 +1110,12 @@ fn query_name(step core.Step, cold_zone string) string {
 	return '${rand.string_from_set('abcdefghijklmnopqrstuvwxyz0123456789', 16)}.${cold_zone}'
 }
 
-fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities map[string]Capability, best_rtt ?f64, opts Options, net core.NetInfo, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning) store.RunResult {
+fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities map[string]Capability, best_rtt ?f64, opts Options, net core.NetInfo, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning, spec core.BootstrapSpec) store.RunResult {
 	weights := core.profiles[opts.profile] or { core.Weights{} }
-	expected := core.expected_samples(opts.rounds, warm_domains.len)
 
-	mut samples := []core.Samples{cap: subjects.len}
-	for s in subjects {
-		samples << core.Samples{
-			base: core.Metrics{
-				key: s.key
-				is_cache: s.is_cache
-				attempted: attempted_of(s, expected)
-				ecs_penalty_ms: median_penalty(edge, s.key)
-				// False when the probe said no and when it did not run. The
-				// score cannot award points for an unknown, and the output
-				// keeps the three states apart under capabilities.
-				dnssec_validating: capabilities[s.key].dnssec_validating or { false }
-				offers_dot: s.dot_ip != ''
-				offers_ipv6: net.ipv6
-				declared: s.declared
-			}
-			warm_ms: s.samples['warm'] or { []f64{} }
-			cold_ms: s.samples['cold'] or { []f64{} }
-			dot_warm_ms: s.samples['dot_warm'] or { []f64{} }
-			// Per subject, not per run: a provider that could not run a probe
-			// attempted nothing on it, and charging it the run's attempt count
-			// would turn an absence into a hundred per cent loss.
-			warm_expected: if 'warm' in s.probes { expected } else { 0 }
-			cold_expected: if 'cold' in s.probes { expected } else { 0 }
-			dot_warm_expected: if 'dot_warm' in s.probes { expected } else { 0 }
-			warm_refused: s.refused['warm'] or { 0 }
-			cold_refused: s.refused['cold'] or { 0 }
-			dot_warm_refused: s.refused['dot_warm'] or { 0 }
-		}
-	}
+	samples := build_samples(subjects, edge, capabilities, net.ipv6)
 
-	ranked := core.rank_providers(samples, best_rtt, weights, core.BootstrapSpec{ seed: opts.seed }) or {
-		[]core.Ranked{}
-	}
+	ranked := core.rank_providers(samples, best_rtt, weights, spec) or { []core.Ranked{} }
 	bests := core.compute_bests(metrics_from(samples), best_rtt)
 
 	mut results := []store.ProviderResult{cap: subjects.len}
@@ -1073,7 +1141,7 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities m
 			}
 			reports << store.ProbeReport{
 				name: name
-				stats: core.compute_counted(subject.samples[name] or { []f64{} }, expected, subject.refused[name] or { 0 })
+				stats: core.compute_counted(subject.samples[name] or { []f64{} }, subject.attempts[name] or { 0 }, subject.refused[name] or { 0 })
 				// Recorded on every DoH result, because an HTTP/1.1 measurement
 				// is not comparable with a browser's real h2 behaviour and a
 				// reader has no way to know which one this was.
@@ -1142,6 +1210,43 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities m
 	}
 }
 
+// build_samples is the bridge from what the run collected to what scoring
+// reads. It is separate from assemble because a frontend re-ranking under a
+// different weighting needs the samples and not the table.
+fn build_samples(subjects []Subject, edge map[string]core.EdgePenalty, capabilities map[string]Capability, ipv6 bool) []core.Samples {
+	mut samples := []core.Samples{cap: subjects.len}
+	for s in subjects {
+		samples << core.Samples{
+			base: core.Metrics{
+				key: s.key
+				is_cache: s.is_cache
+				attempted: attempted_of(s)
+				ecs_penalty_ms: median_penalty(edge, s.key)
+				// False when the probe said no and when it did not run. The
+				// score cannot award points for an unknown, and the output
+				// keeps the three states apart under capabilities.
+				dnssec_validating: capabilities[s.key].dnssec_validating or { false }
+				offers_dot: s.dot_ip != ''
+				offers_ipv6: ipv6
+				declared: s.declared
+			}
+			warm_ms: s.samples['warm'] or { []f64{} }
+			cold_ms: s.samples['cold'] or { []f64{} }
+			dot_warm_ms: s.samples['dot_warm'] or { []f64{} }
+			// Per subject, not per run: a provider that could not run a probe
+			// attempted nothing on it, and charging it the run's attempt count
+			// would turn an absence into a hundred per cent loss.
+			warm_expected: s.attempts['warm'] or { 0 }
+			cold_expected: s.attempts['cold'] or { 0 }
+			dot_warm_expected: s.attempts['dot_warm'] or { 0 }
+			warm_refused: s.refused['warm'] or { 0 }
+			cold_refused: s.refused['cold'] or { 0 }
+			dot_warm_refused: s.refused['dot_warm'] or { 0 }
+		}
+	}
+	return samples
+}
+
 // transports_used maps the probes that ran to the transports they rode.
 //
 // The output contract names transports, not probes: `warm` and `cold` are two
@@ -1168,9 +1273,14 @@ fn transports_used(probes []string) []string {
 	return out
 }
 
-// attempted_of is every query the run put to a subject, on any probe.
-fn attempted_of(s Subject, expected int) int {
-	return s.probes.filter(it != 'ecs' && it !in capability_probes).len * expected
+// attempted_of is every counted query the run has put to a subject, on any
+// probe.
+fn attempted_of(s Subject) int {
+	mut total := 0
+	for _, n in s.attempts {
+		total += n
+	}
+	return total
 }
 
 // filtering_of renders the filter probe's verdict by category.

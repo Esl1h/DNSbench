@@ -41,13 +41,13 @@ point.
 
 ### M3 — TUI (week 4)
 
-- [ ] `term.ui` frame loop, `Layout` struct, SIGWINCH
-- [ ] Live table fed from the scheduler channel
-- [ ] Sorting, filtering, search
-- [ ] Detail view
-- [ ] Profile cycling with live re-rank, no re-measurement
-- [ ] Colour semantics, `NO_COLOR`, colourblind palette
-- [ ] Graceful fallback when `TERM` is unset or `dumb`
+- [x] `term.ui` frame loop, computed column layout, SIGWINCH
+- [x] Live table fed from the run's own thread
+- [x] Sorting, filtering, search
+- [x] Detail view
+- [x] Profile cycling with live re-rank, no re-measurement
+- [x] Colour semantics, `NO_COLOR`, colourblind palette
+- [x] Graceful fallback when `TERM` is unset or `dumb`, or the output is piped
 
 ### M4 — Distribution (week 5)
 

@@ -40,7 +40,8 @@ dnsbench/
 │   └── report.v        table / json / csv emitters
 ├── cmd/
 │   ├── cli.v           flags, non-interactive output
-│   └── tui.v           term.ui frontend
+│   ├── tui.v           term.ui frontend: frame loop, keys, drawing
+│   └── tui_view.v      what the frontend draws: columns, cells, tones, ordering
 ├── data/               embedded assets (see docs/DATA.md)
 ├── schema/             JSON Schema for the output contract
 └── testdata/           golden files, captured DNS responses
@@ -79,8 +80,16 @@ dnsbench/
       (table/json)   (history)     (live)
 ```
 
-`cmd/tui` subscribes to the same channel the scheduler feeds, so the table fills in live
-rather than appearing at the end. The CLI drains the channel silently and prints once.
+`cmd/tui` follows the run through a `Watcher`, an interface declared in the command layer and
+implemented twice: once as a no-op for the CLI, once by the TUI. The core never sees it, which
+is design constraint 3 above holding. The measurement runs on its own thread and hands the
+frame loop finished `RunResult` snapshots down a channel about once every 700 ms; the CLI's
+implementation does nothing at all and prints once at the end.
+
+Snapshots rather than individual samples, and a channel rather than shared state, because the
+two threads then share nothing that is being written while it is read. The samples travel with
+each snapshot so that the TUI can re-rank under a different weight profile without asking for
+another measurement.
 
 ## Concurrency model
 

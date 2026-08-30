@@ -436,3 +436,70 @@ There is no public API to supply one: `TcpSocket.connect` is module-private, so 
 drive the non-blocking sequence itself. `core/transport.v` runs the connect on its own thread
 and waits on a channel with a `select` deadline instead. The abandoned thread ends on its own
 when the kernel gives up.
+
+## term.ui panics when there is no TTY
+
+`Context.run()` calls `termios_setup()` and unwraps the result with `or { panic(err) }`, so a
+program that starts the interface with stdin or stdout redirected dies with
+
+```
+V panic: not running under a TTY
+```
+
+rather than returning an error the caller could fall back from. The check has to happen before
+`run()` is reached. `os.is_atty` returns an `int`, not a `bool`:
+
+```v
+if os.is_atty(0) == 0 || os.is_atty(1) == 0 {
+	// fall back to the non-interactive output
+}
+```
+
+## term.ui installs handlers for every signal in Config.reset
+
+The default is
+
+```v
+reset []os.Signal = [.hup, .int, .quit, .ill, .abrt, .bus, .fpe, .kill, .segv, .pipe, .alrm,
+	.term, .stop]
+```
+
+and each one gets a handler that restores the terminal and calls `exit(0)`. `.pipe` is in that
+list, so accepting the default silently undoes an earlier `os.signal_ignore(.pipe)` and puts
+back the mid-run kill described above. Pass an explicit list without it.
+
+Uppercase letters arrive as the lowercase `KeyCode` with the shift modifier set, not as a
+separate code: `'S'` is `code: .s, modifiers: .shift, ascii: 83`.
+
+## Channels have non-blocking forms
+
+```v
+mut value := Frame{}
+state := ch.try_pop(mut value) // ChanState.success, .not_ready or .closed
+ch.try_push(value)
+```
+
+Both return `ChanState`, both return immediately. `try_pop` takes its destination as `mut`.
+
+## Format verbs take no sign flag and no computed width
+
+`'${v:+6.1f}'` does not print a leading `+` for a positive number; it prints the verb
+uninterpreted. `'${text:${width}s}'` does not compile. A column whose width lives in a table
+has to be padded by hand.
+
+## v fmt rewrites two forms into ones that do not compile
+
+Both were hit while writing `cmd/`, and both are silent: the file still formats, and the next
+compile fails somewhere the edit did not happen.
+
+- A multi-value `return match { ... }` whose arm is long enough to wrap becomes a block, and
+  the tuple turns into three statements with no return. Write the multi-value returns as `if`
+  statements instead.
+- `s#[..-1]`, the relative-slice form, is rewritten to `s[..-1]`, which is a compile error.
+  Use `s.substr(0, s.len - 1)`.
+
+## A module split across files needs the directory, not a file
+
+`v -o dnsbench cmd/cli.v` compiles that one file and nothing else in `cmd/`, so the moment the
+frontend grew a second file the build had to become `v -o dnsbench cmd/`. There is no error to
+notice: the missing symbols are simply reported as unknown functions.
