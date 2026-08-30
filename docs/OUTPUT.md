@@ -31,7 +31,7 @@ Three formats, one guarantee: **anything that consumes `--json` will keep workin
     "asn_org": "TELEFONICA BRASIL S.A",
     "interface": "wlan0",
     "ipv6": false,
-    "region": "SA",
+    "region": "sa",
     "region_source": "rir",
     "vpn_detected": false,
     "dns_interception": false
@@ -143,7 +143,16 @@ Three formats, one guarantee: **anything that consumes `--json` will keep workin
   ranking, with the reason visible.
 - `http_version` on `doh` exists because an h1.1 measurement is not comparable to a browser's
   real h2 behaviour, and hiding that would be dishonest.
-- `region_source` is one of `flag`, `config`, `rir`, `tz`, `default`.
+- `region` is one of the domain-set names of docs/DATA.md, lowercase because they name files:
+  `global`, `sa`, `na`, `eu`, `apac`, `af`, `me`. An earlier draft of this document showed it
+  uppercase; the set names are load-bearing and the case follows them.
+- `region_source` is one of `flag`, `config`, `rir`, `tz`, `default`. `config` is not produced
+  yet: there is no config file. `rir` is the address-to-registry lookup of
+  docs/ARCHITECTURE.md § Region detection, and the answer names the RIR holding the allocation.
+- `asn` and `asn_org` are null when `--no-geo` was passed or the lookup did not answer. The
+  public address they were derived from is deliberately not in the output: it identifies a
+  subscriber, the ASN identifies a network, and only the second is what history needs to keep
+  two links apart. A result is meant to be pasteable into an issue.
 - `score_ci` is the bootstrap confidence interval on the composite score, low and high.
   Providers whose intervals overlap share a tier, so carrying it is what makes that grouping
   checkable from the output alone rather than on trust. Null for a provider that was not

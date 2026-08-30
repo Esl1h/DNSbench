@@ -108,7 +108,7 @@ fn sample_run() RunResult {
 			asn_org: 'EXAMPLE TELECOM'
 			ifname: 'wlp3s0'
 			ipv6: false
-			region: 'SA'
+			region: 'sa'
 			region_source: 'rir'
 			vpn_detected: true
 		}

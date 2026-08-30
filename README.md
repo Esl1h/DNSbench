@@ -22,13 +22,15 @@ they describe the finished tool, not the current binary.
 `ecs`, `dot-fresh`, `dot-warm`, `doh`, `dnssec` and `filter`. The composite score with five
 weight profiles, run-relative normalisation, and tiers from a bootstrap interval on the score.
 Table, JSON, CSV and Markdown output against a versioned schema. Append-only JSONL history.
-Local caches and system resolvers measured and labelled apart. The terminal interface, under
+Local caches and system resolvers measured and labelled apart. ASN, operator and region
+detection, over DNS and opt-out. The terminal interface, under
 `--tui`, with the table filling in live, sorting, filtering, search, a per-provider detail
 view, and profile cycling that re-ranks what was measured without measuring it again.
 
-**Not built yet.** The `history` and `update` subcommands. ASN and region detection, which is
-why every run reports `region: global`. The pinned Tranco domain set, for which eight names
-stand in under the honest label `builtin:top8`. DoH is HTTP/1.1 only, because V's stdlib has
+**Not built yet.** The `history` and `update` subcommands. The config file, which is step 2 of
+the region cascade. The regional domain sets, so the detected region travels in the output and
+does not yet change which names are queried. The pinned Tranco domain set, for which eight
+names stand in under the honest label `builtin:top8`. DoH is HTTP/1.1 only, because V's stdlib has
 no HTTP/2 client, and every DoH result says so; two providers serve DoH over h2 alone and are
 recorded as refusing rather than as unreachable.
 
@@ -140,8 +142,12 @@ latency.
 ## What it does not do
 
 - It does not change your DNS settings. It measures and reports; you decide.
-- It does not phone home. The only network traffic is the measurement itself, plus an
-  explicit `dnsbench update` once that exists.
+- It does not phone home. The only network traffic is the measurement itself, three DNS
+  queries at startup to name the network you are on, and an explicit `dnsbench update` once
+  that exists. `--no-geo` removes the three.
+- It does not publish your address. The public IP is used to look up the ASN and is then
+  discarded; the output carries `AS27699` and the operator's name, never the address. A result
+  is meant to be pasteable into an issue.
 - It does not verify privacy claims. Flags like `nolog` come from the provider's own
   statements and are rendered in a visually distinct style. **Declared, not measured**, and
   enforced by the type system rather than by convention.

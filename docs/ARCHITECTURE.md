@@ -216,23 +216,42 @@ Cascade, first match wins:
 
 ```
 1. --region <code>                        explicit flag
-2. ~/.config/dnsbench/config.toml         persisted
-3. public IP → RIR prefix table           embedded, offline, opt-out via --no-geo
-4. TZ / LC_ALL heuristic                  offline fallback
+2. ~/.config/dnsbench/config.toml         persisted, not implemented: no config file yet
+3. public IP → ASN → country              three DNS queries, opt-out via --no-geo
+4. TZ heuristic                           offline fallback
 5. "global"                               default
 ```
 
-Step 3 obtains the public IP **over DNS**, not HTTP, because that is traffic the tool already
-generates:
+Step 3 is **all DNS**, never HTTP, because that is traffic the tool already generates. The
+public address comes from the one party that knows it, and the address is then resolved to the
+network announcing it:
 
 ```
 kdig +short myip.opendns.com @resolver1.opendns.com
-kdig +short whoami.akamai.net @ns1-1.akamaitech.net
+kdig +short TXT 175.44.46.189.origin.asn.cymru.com
+kdig +short TXT AS27699.asn.cymru.com
 ```
 
-IP→region uses an embedded table derived from the five RIR `delegated-*-extended` files,
-aggregated to prefix+country at release time. A few hundred KB, no GeoIP licence, no runtime
-service.
+The first query goes to `resolver1.opendns.com` because only the far end knows what address it
+saw. The other two are ordinary public names and go to the machine's own resolver; if it has
+none configured they are skipped rather than sent to a public resolver chosen on the user's
+behalf.
+
+An earlier draft of this document specified an embedded table derived from the five RIR
+`delegated-*-extended` files instead. That was dropped for two reasons, both discovered when it
+came to be built. Those files map prefix to **country**, not to ASN, so they could never
+produce `asn_org`, and `docs/OUTPUT.md` § History says the ASN is not optional metadata:
+without it a history file silently mixes a run on fibre with a run on a phone. And prefix to
+ASN is a BGP table, roughly a million prefixes, not the few hundred KB this document estimated.
+Team Cymru answers all three fields in two queries, needs no licence, and ships no data.
+
+`region_source` stays `rir` for this step. The step means the same thing it always did, an
+address resolved to the registry data describing it, and the answer even names the RIR holding
+the allocation.
+
+The public address itself never reaches the output. It identifies a subscriber; the ASN
+identifies a network, which is the part history needs. `--no-geo` skips the whole step and the
+run reports `region: global` with a null ASN.
 
 Under a VPN this detects the exit node's region — **which is correct**. Your CDN mapping and
 your realistic domain mix are those of the exit node, not of your timezone.

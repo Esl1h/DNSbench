@@ -79,6 +79,7 @@ point.
 | 7 | Telemetry | None | None. Not negotiable |
 | 8 | TLS trust anchor | System CA bundle vs. embedded | **Decided: system store + `--ca-bundle`.** See ARCHITECTURE |
 | 9 | Percentile method | Nearest-rank vs. interpolated | **Decided: nearest-rank.** See METHODOLOGY |
+| 10 | ASN and region lookup | Embedded RIR table vs. DNS lookup vs. neither | **Decided: two DNS queries, `--no-geo` to skip.** See ARCHITECTURE |
 
 Decision 1 is settled: the project keeps the name `dnsbench`. GRC's product is Windows-only,
 unrelated in distribution channel, and the collision is a naming overlap rather than a conflict.

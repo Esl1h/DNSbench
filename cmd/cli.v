@@ -40,6 +40,8 @@ struct Options {
 	tui       bool
 	no_color  bool
 	palette   string = 'default'
+	region    string
+	no_geo    bool
 }
 
 fn main() {
@@ -106,6 +108,8 @@ fn usage() {
 	eprintln('  --tui              watch the run in a full-screen terminal interface')
 	eprintln('  --palette <name>   ${known_palettes.join(', ')}  (TUI only, default: default)')
 	eprintln('  --no-color         plain text in the TUI, as NO_COLOR does')
+	eprintln('  --region <code>    ${core.known_regions.join(', ')}  (default: detected)')
+	eprintln('  --no-geo           do not look up the public address, ASN or region')
 	eprintln('  --force            measure even with a tunnel interface up')
 	eprintln('  --seed <n>         fix the shuffle, for a reproducible plan')
 	eprintln('  -h, --help')
@@ -116,9 +120,9 @@ fn usage() {
 // value_options are the flags that take an argument. standalone_options and the
 // help flags stand alone.
 const value_options = ['--profile', '--only', '--rounds', '--probes', '--format', '--history',
-	'--timeout', '--cold-zone', '--ca-bundle', '--seed', '--palette']
+	'--timeout', '--cold-zone', '--ca-bundle', '--seed', '--palette', '--region']
 
-const standalone_options = ['--force', '--tui', '--no-color']
+const standalone_options = ['--force', '--tui', '--no-color', '--no-geo']
 
 fn parse_args(args []string) !Options {
 	mut o := Options{}
@@ -137,6 +141,9 @@ fn parse_args(args []string) !Options {
 				}
 				'--tui' {
 					o = Options{ ...o, tui: true }
+				}
+				'--no-geo' {
+					o = Options{ ...o, no_geo: true }
 				}
 				else {
 					o = Options{ ...o, no_color: true }
@@ -214,6 +221,12 @@ fn parse_args(args []string) !Options {
 				}
 				o = Options{ ...o, palette: value }
 			}
+			'--region' {
+				if value !in core.known_regions {
+					return error('unknown region "${value}"; known: ${core.known_regions.join(', ')}')
+				}
+				o = Options{ ...o, region: value }
+			}
 			'--seed' {
 				n := u32(value.u64())
 				o = Options{ ...o, seed: [n, n ^ u32(0x9e3779b9)] }
@@ -288,6 +301,15 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 
 	cat := catalog.embedded()!
 
+	// Before anything is measured, and never again. docs/ARCHITECTURE.md
+	// § Region detection; `--no-geo` skips it and leaves the fields empty.
+	origin := core.detect_origin(
+		region: opts.region
+		disabled: opts.no_geo
+		resolver: first_resolver(net)
+		timeout: opts.timeout
+	)
+
 	mut probes := opts.probes.clone()
 	if 'cold' in probes && opts.cold_zone == '' {
 		// docs/DATA.md § Cold-probe zone: without a zone there is nothing to
@@ -351,6 +373,7 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 
 	watcher.begin(RunContext{
 		net: net
+		origin: origin
 		cat: cat
 		started: started
 		warnings: warnings
@@ -388,7 +411,7 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 	}
 
 	duration := f64(time.since(started).microseconds()) / 1_000_000.0
-	result := assemble(subjects, edge, capabilities, best_rtt, opts, net, cat, started, duration, warnings, core.BootstrapSpec{ seed: opts.seed })
+	result := assemble(subjects, edge, capabilities, best_rtt, opts, net, origin, cat, started, duration, warnings, core.BootstrapSpec{ seed: opts.seed })
 	// The samples travel with the result so that a frontend can re-rank under a
 	// different weighting without measuring anything again. docs/TUI.md § p.
 	watcher.finish(result, build_samples(subjects, edge, capabilities, net.ipv6), best_rtt)
@@ -791,6 +814,7 @@ mut:
 // waiting for the run to end.
 struct RunContext {
 	net      core.NetInfo
+	origin   core.Origin
 	cat      catalog.Catalog
 	started  time.Time
 	warnings []store.Warning
@@ -1110,7 +1134,7 @@ fn query_name(step core.Step, cold_zone string) string {
 	return '${rand.string_from_set('abcdefghijklmnopqrstuvwxyz0123456789', 16)}.${cold_zone}'
 }
 
-fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities map[string]Capability, best_rtt ?f64, opts Options, net core.NetInfo, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning, spec core.BootstrapSpec) store.RunResult {
+fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities map[string]Capability, best_rtt ?f64, opts Options, net core.NetInfo, origin core.Origin, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning, spec core.BootstrapSpec) store.RunResult {
 	weights := core.profiles[opts.profile] or { core.Weights{} }
 
 	samples := build_samples(subjects, edge, capabilities, net.ipv6)
@@ -1190,9 +1214,12 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities m
 			weights: weights
 		}
 		network: store.Network{
+			asn: origin.asn
+			asn_org: origin.asn_org
 			ifname: net.ifname
 			ipv6: net.ipv6
-			region: 'global'
+			region: origin.region
+			region_source: origin.source
 			vpn_detected: net.vpn_detected()
 		}
 		datasets: store.Datasets{
@@ -1271,6 +1298,19 @@ fn transports_used(probes []string) []string {
 		}
 	}
 	return out
+}
+
+// first_resolver is where the two ASN lookups are sent: the machine's own
+// resolver, because they are ordinary public names and this is the resolver an
+// ordinary lookup would use. Empty when the machine has none configured, which
+// skips the lookup rather than picking a public resolver on the user's behalf.
+fn first_resolver(net core.NetInfo) string {
+	for r in net.resolvers {
+		if r.ip != '' {
+			return r.ip
+		}
+	}
+	return ''
 }
 
 // attempted_of is every counted query the run has put to a subject, on any

@@ -344,3 +344,29 @@ fn test_an_answer_with_no_address_yields_no_address() ! {
 	assert r.a_addresses().len == 0
 	assert r.cname_targets(buf)!.len == 0
 }
+
+fn test_a_txt_record_is_read_out_of_its_character_strings() ! {
+	// testdata/txt_origin.response.bin, from:
+	//   kdig +noedns +nocookie TXT 175.44.46.189.origin.asn.cymru.com
+	// Two records, because the address falls inside two announced prefixes, and
+	// each one carries its string with a leading length octet that is not part
+	// of the string.
+	buf := capture('txt_origin.response.bin')!
+	response := parse_response(buf)!
+
+	strings := response.txt_strings()
+	assert strings.len == 2
+	assert strings[0] == '27699 | 189.46.0.0/16 | BR | lacnic | 2007-06-22'
+	assert strings[1] == '27699 | 189.46.0.0/15 | BR | lacnic | 2007-06-22'
+}
+
+fn test_the_asn_name_record_is_read_whole() ! {
+	// testdata/txt_asn.response.bin, from:
+	//   kdig +noedns +nocookie TXT AS27699.asn.cymru.com
+	buf := capture('txt_asn.response.bin')!
+	response := parse_response(buf)!
+
+	strings := response.txt_strings()
+	assert strings.len == 1
+	assert strings[0] == '27699 | BR | lacnic | 2003-08-25 | AS27699 - TELEFONICA BRASIL S.A, BR'
+}

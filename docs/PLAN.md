@@ -31,6 +31,7 @@ between plausible V and V that runs.
 | 10 | Probe timeouts | 2 s plaintext, 5 s encrypted |
 | 11 | Absent figures | `null`, never 0, for every latency figure and every subscore |
 | 12 | Tier intervals | Bootstrap on the **composite score**, not on `p50` |
+| 13 | ASN and region | Three DNS queries at startup, `--no-geo` to skip. No embedded RIR table |
 
 Decisions 2, 8, 9 and 10 exist because they were undefined and every one of them silently
 changes a number the tool prints.
@@ -71,6 +72,7 @@ files, and the golden run result validating against `schema/result.schema.json`.
 | `core/edge.v` | The ECS probe's arithmetic: per-host penalties against the run's own floor, the median, the misrouted count |
 | `core/capability.v` | The `dnssec` verdict with its CD control, the `filter` reading, majority over repeated readings |
 | `core/netinfo.v` | Resolvers, gateway, cache marking, tunnel detection, IPv6 availability |
+| `core/geo.v` | The region cascade: public address over DNS, the ASN announcing it, its operator, the country to domain-set map, the timezone fallback |
 | `core/schedule.v` | Interleaved rounds, per-round shuffle, discarded warm-up pass, 10 qps pacing, per-provider probe lists |
 | `core/score.v` | The eight subscores, the five profiles, run-relative normalisation, five exclusion reasons |
 | `core/tier.v` | Bootstrap intervals on the composite score, tier and rank assignment |
@@ -136,8 +138,10 @@ same block page from every resolver.
   not currently cover them.
 - **The domain set.** `cmd/cli.v` ships eight names as `builtin:top8`, labelled honestly as not
   being the pinned Tranco set. Generating the real one is a release task; see DATA § Tranco.
-- **ASN and region.** Both stubbed, so every run reports `region: global`. ARCHITECTURE
-  § Region detection describes the cascade; nothing implements it.
+- **The regional domain sets.** ASN, operator and region are detected now and travel in the
+  output, but `region` does not yet choose a domain list: DATA § Domain sets describes seven
+  files and the binary embeds none of them. Step 2 of the cascade, the config file, is also
+  still missing, because there is no config file.
 - **The cold-probe zone.** Live. `probe.dnsbench.esli.blog` is delegated to Bunny DNS, signed
   with algorithm 13, and answers a fresh random label with `192.0.2.1` at a TTL of 60. `delv`
   validates it from the root. Pointing `--cold-zone` at your own zone is still supported; DATA

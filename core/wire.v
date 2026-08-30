@@ -248,6 +248,37 @@ pub fn (r Response) cname_targets(buf []u8) ![]string {
 	return out
 }
 
+// txt_strings returns the TXT records of the answer section, one string per
+// record, in the order the server sent them.
+//
+// A TXT record's rdata is a sequence of character-strings, each a length octet
+// followed by that many bytes, and a record carrying more than one of them
+// means the parts are to be joined with nothing between: RFC 1035 § 3.3.14
+// splits at 255 octets and says nothing about a separator. Cymru's origin
+// answers arrive as one string, but joining rather than taking the first is
+// what keeps a longer answer from being silently truncated.
+pub fn (r Response) txt_strings() []string {
+	mut out := []string{}
+	for rr in r.answer {
+		if rr.rtype != qtype_txt {
+			continue
+		}
+		mut text := ''
+		mut off := 0
+		for off < rr.rdata.len {
+			length := int(rr.rdata[off])
+			off++
+			if off + length > rr.rdata.len {
+				break
+			}
+			text += rr.rdata[off..off + length].bytestr()
+			off += length
+		}
+		out << text
+	}
+	return out
+}
+
 // parse_header decodes the fixed 12-octet header.
 pub fn parse_header(buf []u8) !Header {
 	if buf.len < header_size {

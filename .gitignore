@@ -2,6 +2,8 @@
 .bootstrap/
 
 dnsbench
+# `v <file>_test.v` leaves its compiled binary beside the source
+*_test
 *.o
 *.tmp.c
 .*.v3cc.*/
