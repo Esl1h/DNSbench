@@ -10,6 +10,20 @@ comparability and `history` must be able to detect it.
 ## [Unreleased]
 
 ### Added
+- The terminal interface, `--tui`: a live table fed by the run on its own thread, sorting,
+  filtering, incremental search, a per-provider detail view with the per-CDN-host edge table,
+  and profile cycling that re-ranks what was already measured without measuring it again.
+  `--palette colorblind`, `--no-color` and `NO_COLOR`; falls back to the plain table, saying
+  why, when `TERM` is unset or `dumb` or the output is not a terminal
+- ASN, operator and region detection: the public address over DNS, then the ASN announcing it
+  and its operator, filling `asn`, `asn_org`, `region` and `region_source`, which every run
+  had reported as empty and `global`. `--no-geo` skips it and `--region` sets it by hand. The
+  address itself never reaches the output
+- `-V` / `--version`, printing the version and the commit the build was cut from, and
+  `tool.commit` in the JSON, which was always empty
+- Distribution: a man page, completions for bash, zsh and fish, a `PKGBUILD`, a Fedora spec,
+  `make install` with `DESTDIR` and `PREFIX`, `make release`, a release workflow and
+  `docs/RELEASING.md` with what makes a build reproducible
 - `core/capability.v`: the `dnssec` and `filter` probes. `dnssec` asks a deliberately broken
   zone twice, once ordinarily and once with the CD bit, so that a test zone that has broken
   or a path that eats the response reads as unknown rather than as every resolver validating.

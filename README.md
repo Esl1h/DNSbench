@@ -71,10 +71,19 @@ project exists rather than a patch to one of the others.
 # from source (V >= 0.5.2)
 git clone https://github.com/Esl1h/DNSbench && cd DNSbench
 make build
+
+# and, optionally, the man page and shell completions
+sudo make install PREFIX=/usr/local
 ```
 
-Release binaries and packages are M4. The binary embeds its provider catalog and domain sets
-and links nothing outside libc.
+Release binaries for linux/amd64 and linux/arm64 are published per tag, statically linked,
+with a `SHA256SUMS` beside them. `packaging/` carries a `PKGBUILD` for the AUR and a spec for
+Fedora Copr. The binary embeds its provider catalog and domain sets.
+
+`docs/RELEASING.md` has the procedure, and what makes a build byte-for-byte reproducible: the
+compiler commit is pinned, the version and the commit are compile-time defines rather than
+file edits, and the build happens at a fixed path, because V's `$embed_file` records the
+absolute path of what it embedded.
 
 ## Use
 
@@ -87,7 +96,9 @@ dnsbench --probes warm,tcp                # pick the probes
 dnsbench --history ~/.local/share/dnsbench/runs.jsonl
 ```
 
-`dnsbench --help` lists every flag the binary actually accepts, which is the list to trust.
+`dnsbench --help` lists every flag the binary actually accepts, which is the list to trust,
+and `dnsbench --version` says which commit the binary was built from. `man dnsbench` documents
+all of it once installed.
 
 A run refuses to start when a tunnel interface is up, because it would be measuring the tunnel
 and not the link. `--force` overrides it and says so in the output.

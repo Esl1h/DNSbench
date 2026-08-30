@@ -1,0 +1,38 @@
+# Maintainer: Esli Silva <eslih@pm.me>
+#
+# Built from the release tarball rather than from git, so the package is a
+# function of a tag and a checksum. The version and the commit reach the binary
+# through the Makefile, which reads v.mod and git; a tarball has no git, so the
+# commit comes in through the environment instead and the build says which tag
+# it was cut from.
+
+pkgname=dnsbench
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Rank DNS resolvers from your own connection, including CDN edge quality'
+arch=('x86_64' 'aarch64')
+url='https://github.com/Esl1h/DNSbench'
+license=('MIT')
+depends=('glibc')
+makedepends=('vlang' 'git')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+	cd "DNSbench-$pkgver"
+	make build COMMIT="v$pkgver"
+}
+
+check() {
+	cd "DNSbench-$pkgver"
+	# Never `make check`: it would run `make schema`, which wants a Python tool,
+	# and the tests are the part that has to pass in a build root.
+	make test
+}
+
+package() {
+	cd "DNSbench-$pkgver"
+	make install DESTDIR="$pkgdir" PREFIX=/usr
+	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+	install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

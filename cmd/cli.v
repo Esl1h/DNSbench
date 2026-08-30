@@ -14,7 +14,13 @@ import store
 // frontend, the TUI, consumes the same core with no changes to it: that is what
 // docs/ARCHITECTURE.md § Design constraints means by the core knowing nothing
 // about frontends.
-const tool_version = '0.1.0'
+// The version is `v.mod`'s, and the commit is whatever the build was cut from.
+// Both are compile-time defines with a working default, so `v -o dnsbench cmd/`
+// still builds; `make build` fills them in from the repository so that a result
+// can be traced back to the code that produced it.
+const tool_version = $d('version', '0.1.0')
+
+const tool_commit = $d('commit', '')
 
 // The plan is walked in order rather than by one worker per provider.
 //
@@ -92,6 +98,16 @@ fn main() {
 	exit(store.exit_code(result))
 }
 
+// version_line is what `--version` prints and what a bug report should carry.
+// The commit is absent from a build that was not cut from a repository, which
+// is a fact about that build rather than something to paper over.
+fn version_line() string {
+	if tool_commit == '' {
+		return 'dnsbench ${tool_version}'
+	}
+	return 'dnsbench ${tool_version} (${tool_commit})'
+}
+
 fn usage() {
 	eprintln('usage: dnsbench [options]')
 	eprintln('')
@@ -112,6 +128,7 @@ fn usage() {
 	eprintln('  --no-geo           do not look up the public address, ASN or region')
 	eprintln('  --force            measure even with a tunnel interface up')
 	eprintln('  --seed <n>         fix the shuffle, for a reproducible plan')
+	eprintln('  -V, --version')
 	eprintln('  -h, --help')
 	eprintln('')
 	eprintln('Exit: 0 ok, 1 measured with errors, 2 usage, 3 nothing reachable.')
@@ -133,6 +150,10 @@ fn parse_args(args []string) !Options {
 		if arg in ['-h', '--help'] {
 			usage()
 			exit(store.exit_usage)
+		}
+		if arg in ['-V', '--version'] {
+			println(version_line())
+			exit(store.exit_ok)
 		}
 		if arg in standalone_options {
 			match arg {
@@ -1204,6 +1225,7 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities m
 	return store.RunResult{
 		tool: store.Tool{
 			version: tool_version
+			commit: tool_commit
 		}
 		run: store.Run{
 			started_at: started.format_rfc3339()

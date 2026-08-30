@@ -1,0 +1,237 @@
+.TH DNSBENCH 1 "2026-08-29" "dnsbench 0.1.0" "User Commands"
+.SH NAME
+dnsbench \- rank DNS resolvers from your own connection, including CDN edge quality
+.SH SYNOPSIS
+.B dnsbench
+.RI [ options ]
+.SH DESCRIPTION
+.B dnsbench
+measures and ranks DNS resolvers from the link it is run on, over UDP, TCP,
+DNS over TLS and DNS over HTTPS, and reports a composite score with published
+weights.
+.PP
+Besides lookup latency it measures
+.BR "CDN edge quality" :
+it resolves a set of DNS\-steered CDN hostnames through every resolver and
+times a TCP connection to whichever address came back, so a resolver that
+answers quickly and sends you to an edge on another continent is visible as
+such. That column is
+.B EDGE
+and it is the reason the tool exists.
+.PP
+Measured facts and facts a provider declares about itself are never mixed. A
+badge written
+.B +DNSSEC
+or
+.B \-ads
+was established by a probe during this run; a badge written
+.BI ~ nolog
+is a claim by the operator, is styled differently, and contributes to no
+measured subscore.
+.PP
+A figure that was not measured is printed as a dash and emitted as
+.BR null ,
+never as zero: zero is the best value in every latency column.
+.SH OPTIONS
+.TP
+.BI \-\-profile " name"
+Weight profile for the composite score: \fBbalanced\fR, \fBspeed\fR,
+\fBprivacy\fR, \fBstreaming\fR or \fBgaming\fR. Default \fBbalanced\fR. The
+weights are printed in the header of every output format and travel in the
+JSON.
+.TP
+.BI \-\-only " keys"
+Comma\-separated catalog keys, or addresses of the machine's own resolvers.
+Only these are measured.
+.TP
+.BI \-\-rounds " n"
+Measured rounds per provider. Default 5. A round is one pass over the domain
+set, and an additional round 0 is sent and discarded because it pays for cache
+fill and route setup that no later query pays.
+.TP
+.BI \-\-probes " names"
+Comma\-separated, from \fBwarm\fR, \fBtcp\fR, \fBcold\fR, \fBecs\fR,
+\fBdot-fresh\fR, \fBdot-warm\fR, \fBdoh\fR, \fBdnssec\fR and \fBfilter\fR.
+Default \fBwarm\fR. See
+.B PROBES
+below.
+.TP
+.BI \-\-format " name"
+\fBtable\fR, \fBjson\fR, \fBcsv\fR or \fBmarkdown\fR. Default \fBtable\fR.
+Only \fBjson\fR carries a stability guarantee; do not parse the others.
+.TP
+.BI \-\-history " path"
+Append the run to a JSONL history file. Every line carries the network
+fingerprint, so runs on different links are never silently mixed.
+.TP
+.BI \-\-timeout " ms"
+Per\-query timeout in milliseconds. Default 2000 for plaintext probes;
+encrypted probes use 5000, because a handshake is two more round trips.
+.TP
+.BI \-\-cold\-zone " zone"
+Wildcard zone the \fBcold\fR probe asks under. Without it the probe is skipped
+and the run says so, rather than generating NXDOMAIN traffic against a third
+party.
+.TP
+.BI \-\-ca\-bundle " path"
+CA bundle for DoT and DoH, overriding the system cascade. The trust anchor is
+always the system store; nothing is embedded.
+.TP
+.B \-\-tui
+Watch the run in a full\-screen terminal interface. Falls back to the plain
+table, saying why, when \fBTERM\fR is unset or \fBdumb\fR or the output is not
+a terminal.
+.TP
+.BI \-\-palette " name"
+\fBdefault\fR or \fBcolorblind\fR, which swaps green and red for blue and
+orange. TUI only.
+.TP
+.B \-\-no\-color
+Plain text in the TUI, as the \fBNO_COLOR\fR environment variable does.
+.TP
+.BI \-\-region " code"
+\fBglobal\fR, \fBsa\fR, \fBna\fR, \fBeu\fR, \fBapac\fR, \fBaf\fR or \fBme\fR.
+Default is detected.
+.TP
+.B \-\-no\-geo
+Do not look up the public address, the ASN or the region. The run reports
+\fBregion: global\fR and a null ASN, and sends no packet other than the
+measurement.
+.TP
+.B \-\-force
+Measure even with a tunnel interface up. Without it the run refuses, because
+every number would describe the tunnel rather than the link.
+.TP
+.BI \-\-seed " n"
+Fix the shuffle, for a reproducible plan.
+.TP
+.BR \-V ", " \-\-version
+Print the version and the commit it was built from.
+.TP
+.BR \-h ", " \-\-help
+Print the flag list the binary actually accepts.
+.SH PROBES
+.TP
+.B warm
+Repeated lookups of a fixed domain set. The everyday case, and the probe the
+ranking is built on.
+.TP
+.B tcp
+The same question over TCP, which is the fallback path a truncated answer
+takes.
+.TP
+.B cold
+A name nobody has ever asked for, drawn fresh per query under
+.BR \-\-cold\-zone ,
+so every query is a cache miss by construction and the resolver has to recurse.
+.TP
+.B ecs
+Resolves a set of DNS\-steered CDN hostnames through each resolver and times a
+TCP connection to the answer. Reports the median penalty against the best edge
+any resolver reached this run, and how many hosts came back far enough adrift
+to have been answered from the wrong region.
+.TP
+.B dot-fresh
+DNS over TLS, timing connect, handshake and query together. A benchmark that
+opens a connection per query is measuring handshakes; this variant exists to
+show by how much.
+.TP
+.B dot-warm
+DNS over TLS on a connection opened once and held, which is what a real stub
+resolver does. Only this variant feeds the score.
+.TP
+.B doh
+DNS over HTTPS, RFC 8484, over HTTP/1.1. Every result records
+\fBhttp_version\fR, because an HTTP/1.1 measurement is not comparable to a
+browser's real HTTP/2 behaviour. An endpoint that serves HTTP/2 only is
+recorded as refusing, never as unreachable.
+.TP
+.B dnssec
+Asks a deliberately broken zone twice, once ordinarily and once with the
+Checking Disabled bit, and reads validation out of the pair. A resolver that
+answers neither way is unknown rather than failing.
+.TP
+.B filter
+Asks for an advertising domain and reads whether the answer is a resolution or
+a block.
+.SH EXIT STATUS
+.TP
+.B 0
+Run completed.
+.TP
+.B 1
+Run completed with errors, or was interrupted; partial results were emitted.
+.TP
+.B 2
+Usage error.
+.TP
+.B 3
+No provider reachable, most likely no connectivity.
+.TP
+.B 4
+Catalog verification failure.
+.SH ENVIRONMENT
+.TP
+.B NO_COLOR
+Set to any value to drop every colour escape from the terminal interface.
+.TP
+.B TERM
+Unset or \fBdumb\fR sends \fB\-\-tui\fR to the plain table.
+.TP
+.B TZ
+Read only as the last step of region detection, when the lookup was skipped or
+did not answer.
+.SH FILES
+.TP
+.I ~/.local/share/dnsbench/runs.jsonl
+Conventional location for the history file. Nothing is written there unless
+.B \-\-history
+names it.
+.SH EXAMPLES
+.PP
+Rank every provider in the catalog over UDP:
+.PP
+.RS
+.EX
+dnsbench
+.EE
+.RE
+.PP
+The full battery, including the edge probe, watched as it happens:
+.PP
+.RS
+.EX
+dnsbench \-\-tui \-\-probes warm,cold,ecs,dot\-warm,dnssec,filter \\
+         \-\-cold\-zone probe.dnsbench.esli.blog
+.EE
+.RE
+.PP
+Machine\-readable, into a history file, with no lookup of the network:
+.PP
+.RS
+.EX
+dnsbench \-\-no\-geo \-\-format json \\
+         \-\-history ~/.local/share/dnsbench/runs.jsonl
+.EE
+.RE
+.SH NOTES
+.B dnsbench
+does not change your DNS settings, does not phone home, and carries no
+telemetry. Besides the measurement it makes three DNS queries at startup to
+name the network it is on, which
+.B \-\-no\-geo
+removes. The public address those queries establish is used to look up the ASN
+and is then discarded: the output carries the ASN and the operator's name and
+never the address, so a result is safe to paste into a bug report.
+.SH SEE ALSO
+.BR kdig (1),
+.BR dig (1),
+.BR resolvectl (1)
+.PP
+The specification lives with the source, under
+.IR docs/ :
+methodology, scoring, the output contract and the data sets.
+.SH AUTHOR
+Esli Silva.
+.SH REPORTING BUGS
+https://github.com/Esl1h/DNSbench/issues

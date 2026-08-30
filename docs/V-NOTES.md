@@ -503,3 +503,32 @@ compile fails somewhere the edit did not happen.
 `v -o dnsbench cmd/cli.v` compiles that one file and nothing else in `cmd/`, so the moment the
 frontend grew a second file the build had to become `v -o dnsbench cmd/`. There is no error to
 notice: the missing symbols are simply reported as unknown functions.
+
+## $embed_file records an absolute path
+
+`$embed_file('data/providers.toml')` compiles to a struct holding the file's
+**absolute** path alongside its bytes:
+
+```c
+string _str_918 = {"/home/esli/GIT/DNSbench/data/providers.toml", 43, 1};
+```
+
+The path is never used at runtime, the bytes are already in the binary, but it
+means the same source built in two different directories produces two different
+binaries. Everything else about a `-prod` build is deterministic: two builds in
+the same directory, with the same compiler and the same `-d` defines, are
+byte-identical before and after `strip`.
+
+So a reproducible release has to fix the build path, not only the toolchain.
+`docs/RELEASING.md` § Reproducibility does that at `/build/dnsbench`.
+
+## Compile-time defines reach the binary through $d()
+
+```v
+const tool_version = $d('version', '0.1.0')
+```
+
+Set with `-d version=0.1.0` on the command line. The second argument is the value
+used when the flag is absent, so a plain `v -o dnsbench cmd/` still builds
+outside a checkout. This is how the version and the commit are stamped without
+rewriting a file to make a release.

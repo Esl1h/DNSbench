@@ -1,0 +1,84 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  # The toolchain is pinned, because the binary is a function of the source and
+  # the compiler that built it. docs/RELEASING.md § Reproducibility.
+  V_COMMIT: cbf4e85
+  # Every job builds at the same absolute path. V's $embed_file records the
+  # absolute path of what it embedded, so two builds of the same source at
+  # different paths differ; the same source at the same path does not.
+  BUILD_DIR: /build/dnsbench
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: linux-amd64
+          - runner: ubuntu-22.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage the source at the fixed build path
+        run: |
+          sudo mkdir -p "$(dirname "$BUILD_DIR")"
+          sudo cp -a "$GITHUB_WORKSPACE" "$BUILD_DIR"
+          sudo chown -R "$USER" "$BUILD_DIR"
+
+      - name: Install musl for static linking
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Install V
+        run: |
+          git clone https://github.com/vlang/v /tmp/v
+          git -C /tmp/v checkout "$V_COMMIT"
+          make -C /tmp/v
+          echo "/tmp/v" >> "$GITHUB_PATH"
+
+      - name: Cut the artifacts
+        working-directory: /build/dnsbench
+        run: make release STATIC=1 TARGET=${{ matrix.target }}
+
+      - name: Confirm the binary is static and runs
+        working-directory: /build/dnsbench
+        run: |
+          file "dist/dnsbench-"*"-${{ matrix.target }}"
+          ldd "dist/dnsbench-"*"-${{ matrix.target }}" || true
+          "./dist/dnsbench-"*"-${{ matrix.target }}" --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: /build/dnsbench/dist/*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: One checksum file for the release
+        working-directory: dist
+        run: cat SHA256SUMS-* > SHA256SUMS && rm -f SHA256SUMS-*
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
