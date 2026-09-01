@@ -68,7 +68,6 @@ mut:
 	tls    &ssl.SSLConn = unsafe { nil }
 	target Target
 	open_  bool
-
 	// hostname is the name the certificate is verified against, and the SNI
 	// sent. It comes from the catalog, never from a reverse lookup.
 pub:

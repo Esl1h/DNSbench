@@ -36,7 +36,6 @@ mut:
 	tls    &ssl.SSLConn = unsafe { nil }
 	target Target
 	open_  bool
-
 	// hostname is both the certificate's expected name and the Host header.
 pub:
 	hostname string
