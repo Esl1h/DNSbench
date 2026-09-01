@@ -23,10 +23,12 @@ they describe the finished tool, not the current binary.
 weight profiles, run-relative normalisation, and tiers from a bootstrap interval on the score.
 Table, JSON, CSV and Markdown output against a versioned schema. Append-only JSONL history.
 Local caches and system resolvers measured and labelled apart. ASN, operator and region
-detection, over DNS and opt-out. The terminal interface, under
-`--tui`, with the table filling in live, sorting, filtering, search, a per-provider detail
-view, and profile cycling that re-ranks what was measured without measuring it again. The full
-optional catalog: `dnsbench update` fetches and verifies the DNSCrypt public-resolvers list,
+detection, over DNS and opt-out. Transparent DNS hijack detection, a second address query to
+8.8.8.8 compared against the one region detection already makes to OpenDNS. The terminal
+interface, under `--tui`, with the table filling in live, sorting, filtering, search, a
+per-provider detail view, and profile cycling that re-ranks what was measured without
+measuring it again. The full optional catalog: `dnsbench update` fetches and verifies the
+DNSCrypt public-resolvers list,
 `--catalog dnscrypt` parses its `sdns://` stamps and merges them in under the embedded catalog,
 `~/.config/dnsbench/providers.toml` overrides both, and `--near` keeps a run to the fastest
 subset instead of every listed resolver.

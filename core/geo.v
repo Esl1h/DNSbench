@@ -39,6 +39,14 @@ pub const cymru_origin_zone = 'origin.asn.cymru.com'
 
 pub const cymru_asn_zone = 'asn.cymru.com'
 
+// google_myaddr_resolver is Google Public DNS, asked for `google_myaddr_name`
+// the same way `opendns_myip_resolver` is asked for `myip_name`: a second,
+// independent answer to "what address did this query arrive from", used only
+// to catch a transparent DNS hijack. docs/METHODOLOGY.md § Fairness rules.
+pub const google_myaddr_resolver = '8.8.8.8'
+
+pub const google_myaddr_name = 'o-o.myaddr.l.google.com'
+
 // Origin is what the run could establish about the network it is on. Every
 // field is empty or `global` when nothing could be established, which is not an
 // error: docs/ARCHITECTURE.md § Failure policy says region detection falls back
@@ -52,6 +60,12 @@ pub:
 	// source is the step of the cascade that decided the region, in the
 	// vocabulary of docs/OUTPUT.md: flag, config, rir, tz or default.
 	source string = 'default'
+	// dns_interception is set when step 3's two independent "what is my
+	// address" queries disagree: docs/METHODOLOGY.md § Fairness rules calls
+	// this a security finding, not a measurement caveat. False also covers
+	// "not checked", the same convention core.NetInfo.vpn_detected() already
+	// uses, since --no-geo or a failed lookup leave nothing to disagree with.
+	dns_interception bool
 }
 
 // The country groupings behind the seven domain sets. Coarse on purpose: they
@@ -206,7 +220,8 @@ pub fn detect_origin(spec GeoSpec) Origin {
 }
 
 // lookup_origin is step 3: the public address over DNS, then the ASN
-// announcing it, then that ASN's name. Three queries, once per run.
+// announcing it, then that ASN's name, then a second, independent address
+// query to catch a transparent DNS hijack. Four queries, once per run.
 fn lookup_origin(spec GeoSpec) !Origin {
 	ip := public_ip(spec.timeout)!
 	reversed := reverse_ipv4(ip)!
@@ -229,10 +244,19 @@ fn lookup_origin(spec GeoSpec) !Origin {
 		}
 	}
 
+	// A failed second query is not a failure of the first, and it is not
+	// evidence of interception either: it is one fewer thing this run could
+	// establish, the same as an unnamed ASN above.
+	mut interception := false
+	if google_ip := google_myaddr_ip(spec.timeout) {
+		interception = interception_detected(ip, google_ip)
+	}
+
 	return Origin{
 		asn: 'AS${asn}'
 		asn_org: org
 		country: country
+		dns_interception: interception
 		region: region_for_country(country)
 		// The vocabulary of docs/OUTPUT.md has no value for this lookup and
 		// gains none: `rir` is what the step means, an address resolved to the
@@ -252,6 +276,45 @@ pub fn public_ip(timeout time.Duration) !string {
 		return error('${myip_name} returned no address')
 	}
 	return addresses[0]
+}
+
+// google_myaddr_ip asks 8.8.8.8 what address the query arrived from, the same
+// question public_ip puts to OpenDNS. A real answer carries the address as
+// its own TXT string, and sometimes a second string
+// "edns0-client-subnet <prefix>" when something on the path added an EDNS
+// Client Subnet option to the query; that second string answers a different
+// question and is skipped. Verified against a live query to 8.8.8.8, which
+// returned exactly this shape: the plain address first, the annotation
+// second.
+pub fn google_myaddr_ip(timeout time.Duration) !string {
+	answers := ask_txt(google_myaddr_resolver, google_myaddr_name, timeout)!
+	return first_plain_txt(answers) or {
+		error('${google_myaddr_name} answered with no plain address')
+	}
+}
+
+// first_plain_txt returns the first answer that is not an EDNS Client Subnet
+// annotation.
+pub fn first_plain_txt(answers []string) ?string {
+	for a in answers {
+		if !a.starts_with('edns0-client-subnet') {
+			return a
+		}
+	}
+	return none
+}
+
+// interception_detected compares the two independent "what is my address"
+// answers. Neither query goes through the machine's configured resolver, and
+// both leave through the same gateway, so on a link with nothing intercepting
+// DNS traffic they agree. A mismatch means one of the two paths was answered
+// by something other than the resolver it was addressed to: docs/METHODOLOGY.md
+// § Fairness rules calls this a security finding, not a measurement caveat.
+//
+// An empty address on either side means that side's query never got a usable
+// answer, which is not evidence of anything and must not read as a mismatch.
+pub fn interception_detected(opendns_ip string, google_ip string) bool {
+	return opendns_ip != '' && google_ip != '' && opendns_ip != google_ip
 }
 
 // reverse_ipv4 turns 189.46.44.175 into 175.44.46.189, which is how the origin

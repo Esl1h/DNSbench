@@ -107,3 +107,32 @@ fn test_with_nowhere_to_ask_the_lookup_is_skipped_rather_than_guessed() {
 	assert found.asn == ''
 	assert found.region in known_regions
 }
+
+// The two-string shape is what a live query to 8.8.8.8 actually returned:
+// the address first, an EDNS Client Subnet annotation second, added by
+// something on the path since this tool sends no ECS option itself.
+fn test_the_plain_address_is_picked_over_the_ecs_annotation() {
+	answers := ['172.217.37.25', 'edns0-client-subnet 177.197.83.0/24']
+	assert first_plain_txt(answers)? == '172.217.37.25'
+}
+
+fn test_a_lone_annotation_with_no_plain_address_yields_nothing() {
+	assert first_plain_txt(['edns0-client-subnet 177.197.83.0/24']) == none
+}
+
+fn test_an_empty_answer_set_yields_nothing() {
+	assert first_plain_txt([]string{}) == none
+}
+
+fn test_interception_is_a_disagreement_between_the_two_resolvers() {
+	assert interception_detected('189.46.44.175', '189.46.44.175') == false
+	assert interception_detected('189.46.44.175', '203.0.113.9') == true
+}
+
+// A query that never got a usable answer is not evidence of anything, and
+// must not be conflated with the two resolvers actually disagreeing.
+fn test_a_missing_address_on_either_side_is_never_a_mismatch() {
+	assert interception_detected('', '189.46.44.175') == false
+	assert interception_detected('189.46.44.175', '') == false
+	assert interception_detected('', '') == false
+}

@@ -72,7 +72,7 @@ piece, not part of this milestone's line.
 - [ ] `history` aggregation and sparklines
 - [x] `--catalog dnscrypt`: the `sdns://` parser, three-layer precedence merge,
       `--require`, `--near` reachability prefilter
-- [ ] DNS interception / hijack detection as a first-class check
+- [x] DNS interception / hijack detection as a first-class check
 - [ ] `--watch` mode for continuous monitoring with threshold alerts
 
 ## Open decisions

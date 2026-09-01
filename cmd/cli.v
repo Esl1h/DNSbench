@@ -600,6 +600,19 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 		timeout: opts.timeout
 	)
 
+	if origin.dns_interception {
+		// docs/METHODOLOGY.md § Fairness rules: "a security finding, not a
+		// measurement caveat." Reported prominently, not blocked: unlike a VPN,
+		// which taints every sample the run is about to take, an interception
+		// finding is a fact about the network worth surfacing, not a reason by
+		// itself to refuse a measurement the user asked for.
+		warnings << store.Warning{
+			level: 'warn'
+			key: 'network'
+			message: 'transparent DNS interception detected: a direct query to 8.8.8.8 and a direct query to OpenDNS reported different egress addresses. Something between this machine and those resolvers may be redirecting DNS traffic'
+		}
+	}
+
 	mut probes := opts.probes.clone()
 	if 'cold' in probes && opts.cold_zone == '' {
 		// docs/DATA.md § Cold-probe zone: without a zone there is nothing to
@@ -1512,6 +1525,7 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities m
 			region: origin.region
 			region_source: origin.source
 			vpn_detected: net.vpn_detected()
+			dns_interception: origin.dns_interception
 		}
 		datasets: store.Datasets{
 			catalog: store.CatalogInfo{

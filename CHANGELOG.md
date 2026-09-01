@@ -10,6 +10,13 @@ comparability and `history` must be able to detect it.
 ## [Unreleased]
 
 ### Added
+- Transparent DNS hijack detection: a second, independent "what is my address" query to
+  8.8.8.8, compared against the one already made to OpenDNS for region detection. A machine
+  with nothing intercepting its DNS traffic sees the same egress address from both, since both
+  queries leave through the same gateway; a mismatch fills `network.dns_interception` and
+  raises a prominent warning rather than the run's usual quiet failure handling.
+  docs/METHODOLOGY.md § Fairness rules called this "a security finding, not a measurement
+  caveat," so unlike a detected VPN it is reported, not blocked
 - `--near`: a reachability pre-pass for `--catalog dnscrypt`, a TCP connect against every
   candidate that has an address to dial, paced the same way the measurement plan is, keeping
   the fastest 25 for the full battery instead of every listed resolver. A candidate with
