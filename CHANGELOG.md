@@ -10,6 +10,13 @@ comparability and `history` must be able to detect it.
 ## [Unreleased]
 
 ### Added
+- `--catalog dnscrypt`: an `sdns://` DNS Stamp parser for the DNSCrypt public-resolvers list
+  `dnsbench update` already fetched and verified, a three-layer precedence merge with the
+  embedded catalog and `~/.config/dnsbench/providers.toml`, and `--require` to filter the
+  merged catalog by tag. Only DoH stamps become providers — no transport here speaks DNSCrypt,
+  and a stamp naming no address asks for a mid-run resolution this tool refuses to do. A key
+  the DNSCrypt list shares with the embedded catalog keeps the embedded, hand-curated entry;
+  `--near` is still open
 - The terminal interface, `--tui`: a live table fed by the run on its own thread, sorting,
   filtering, incremental search, a per-provider detail view with the per-CDN-host edge table,
   and profile cycling that re-ranks what was already measured without measuring it again.

@@ -232,12 +232,28 @@ return 200. `core/fetch.v` exists because of it, going through the same `dial_tl
 DoH probes use. On this path the minisign signature is the integrity control regardless, but
 shipping a client that accepts any certificate would have been a defect introduced knowingly.
 
-### Next: the optional catalog, Layer 2
+### Done: the optional catalog, Layer 2
 
-`dnsbench update` fetches and verifies the DNSCrypt list and nothing reads the cache. What is
-missing is the `sdns://` stamp parser, `catalog/merge.v`, `catalog/userconf.v` and the
-`--catalog dnscrypt`, `--require` and `--near` flags of `docs/DATA.md` § Layer 2. `--near`
-matters at that scale: probing four hundred resolvers fully is slow and impolite.
+`catalog/dnscrypt.v` now parses the `sdns://` stamps and the `## key` sections of the file
+`dnsbench update` caches; `catalog/merge.v` applies the three-layer precedence of
+`docs/DATA.md` § Precedence, and `catalog/userconf.v` reads Layer 3. `--catalog dnscrypt` and
+`--require` are wired into the CLI.
+
+Only DoH stamps become providers: the list carries DNSCrypt-protocol stamps this tool has no
+transport for, and stamps naming no address, which every probe here refuses to resolve mid-run.
+Their address is carried as `dot4` / `dot6`, never `udp4` / `udp6`, because nothing in a
+DNSCrypt-list entry establishes that the same machine also answers plain UDP on port 53 the way
+the embedded catalog's hand-verified entries do.
+
+A key present in both the embedded and DNSCrypt catalogs keeps the embedded entry; the DNSCrypt
+copy is skipped and reported. `docs/DATA.md` § Precedence spells out why.
+
+### Next: `--near`
+
+Probing four hundred resolvers fully is slow and impolite. `--near` still needs a low-rate
+reachability pre-pass, kept undesigned deliberately: what probe it runs, at what rate, and
+against how large a candidate pool are all open questions the rest of `--catalog dnscrypt`
+did not need answered.
 
 ## Phases
 

@@ -25,16 +25,18 @@ Table, JSON, CSV and Markdown output against a versioned schema. Append-only JSO
 Local caches and system resolvers measured and labelled apart. ASN, operator and region
 detection, over DNS and opt-out. The terminal interface, under
 `--tui`, with the table filling in live, sorting, filtering, search, a per-provider detail
-view, and profile cycling that re-ranks what was measured without measuring it again.
+view, and profile cycling that re-ranks what was measured without measuring it again. The full
+optional catalog: `dnsbench update` fetches and verifies the DNSCrypt public-resolvers list,
+`--catalog dnscrypt` parses its `sdns://` stamps and merges them in under the embedded catalog,
+and `~/.config/dnsbench/providers.toml` overrides both.
 
-**Not built yet.** The `history` subcommand, and the `--catalog dnscrypt` half of the optional
-catalog: `dnsbench update` fetches and verifies it, but the `sdns://` stamp parser that would
-turn it into providers does not exist. The config file, which is step 2 of
-the region cascade. The regional domain sets, so the detected region travels in the output and
-does not yet change which names are queried. The pinned Tranco domain set, for which eight
-names stand in under the honest label `builtin:top8`. DoH is HTTP/1.1 only, because V's stdlib has
-no HTTP/2 client, and every DoH result says so; two providers serve DoH over h2 alone and are
-recorded as refusing rather than as unreachable.
+**Not built yet.** The `history` subcommand. `--near`, the reachability pre-pass that keeps a
+`--catalog dnscrypt` run to a fast subset instead of every listed resolver. The regional domain
+sets, so the detected region travels in the output and does not yet change which names are
+queried. The pinned Tranco domain set, for which eight names stand in under the honest label
+`builtin:top8`. DoH is HTTP/1.1 only, because V's stdlib has no HTTP/2 client, and every DoH
+result says so; two providers serve DoH over h2 alone and are recorded as refusing rather than
+as unreachable.
 
 `docs/PLAN.md` has the state of every module and what each remaining phase involves.
 `docs/ROADMAP.md` has the milestones.
@@ -153,8 +155,17 @@ what establishes integrity.
 The list is not the default and never becomes it. Its own header warns that it includes
 servers which censor, which do not validate DNSSEC, and which collect and monetise queries, so
 ranking four hundred arbitrary resolvers by latency and crowning a winner would be
-irresponsible. Nothing reads the cache yet: opting in with `--catalog dnscrypt` is a later
-release.
+irresponsible. Opt in explicitly:
+
+```sh
+dnsbench --catalog dnscrypt
+dnsbench --catalog dnscrypt --require nolog,dnssec,nofilter
+```
+
+Only DoH stamps become providers; DNSCrypt-protocol entries name an address no transport here
+speaks. A key already curated in the embedded catalog is never replaced by the DNSCrypt list's
+copy of the same key. `--near`, a reachability pre-pass to keep a run to a fast subset instead
+of every listed resolver, is a later release.
 
 ### Exit codes
 

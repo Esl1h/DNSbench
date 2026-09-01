@@ -70,7 +70,9 @@ piece, not part of this milestone's line.
 
 - [ ] Region-aware domain sets and RIR table generation at release
 - [ ] `history` aggregation and sparklines
-- [ ] `--catalog dnscrypt` with `sdns://` parser and `--near` prefilter
+- [x] `--catalog dnscrypt`: the `sdns://` parser, three-layer precedence merge,
+      `--require`
+- [ ] `--near` prefilter for `--catalog dnscrypt`
 - [ ] DNS interception / hijack detection as a first-class check
 - [ ] `--watch` mode for continuous monitoring with threshold alerts
 

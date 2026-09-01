@@ -14,6 +14,17 @@ Both follow the same rule: shipped in the binary, versioned, refreshable only on
 
 Later layers never delete earlier entries; they merge by `key`.
 
+The diagram orders the layers by where they come from, not by who wins a collision.
+On a key that exists in more than one layer: **user overrides always win**, since Layer 3
+exists precisely to let an operator's own judgement stand in for the shipped catalog.
+**Embedded always wins over the DNSCrypt catalog**, the other way round: Layer 1's curation
+criteria above are what makes its entries worth more than an uncurated one sharing the same
+key, and letting `--catalog dnscrypt` silently replace a hand-verified entry, notes and all,
+would make that curation pointless. In the current data this is not hypothetical: `cloudflare`,
+`cloudflare-security`, `controld-unfiltered`, `dns4eu-protective`, `google` and `nextdns` exist
+in both catalogs, and every one of the embedded versions is kept. A collision with the DNSCrypt
+catalog is reported so a run can say why it saw fewer keys than the cache holds.
+
 ## Provider catalog
 
 ### Layer 1 — embedded, curated

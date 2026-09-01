@@ -48,6 +48,11 @@ struct Options {
 	palette   string = 'default'
 	region    string
 	no_geo    bool
+	// catalog selects the provider source, on top of the embedded default and
+	// any user override file. docs/DATA.md § Layer 2: 'dnscrypt' opts into the
+	// cached DNSCrypt public-resolvers list; anything else is the default.
+	catalog string
+	require []string
 }
 
 fn main() {
@@ -174,6 +179,111 @@ fn cache_directory() string {
 	return os.join_path(os.home_dir(), '.cache', 'dnsbench')
 }
 
+// load_catalog assembles the three provider layers of docs/DATA.md §
+// Precedence. Layer 3, the user's own override file, is always consulted;
+// Layer 2, the DNSCrypt list, only when `--catalog dnscrypt` asked for it,
+// and never fatally: a missing or unreadable cache degrades to the embedded
+// catalog with a warning rather than failing the run, matching how the rest
+// of this tool treats an optional, previously-verified input going missing.
+fn load_catalog(opts Options, mut warnings []store.Warning) !catalog.Catalog {
+	embedded := catalog.embedded()!
+
+	mut dnscrypt_providers := []catalog.Provider{}
+	if opts.catalog == 'dnscrypt' {
+		path := os.join_path(cache_directory(), catalog.dnscrypt_cache_name)
+		text := os.read_file(path) or {
+			warnings << store.Warning{
+				level: 'warn'
+				key: 'catalog'
+				message: '--catalog dnscrypt: ${path} could not be read (${err.msg()}); run `dnsbench update` first. Falling back to the embedded catalog'
+			}
+			''
+		}
+		if text != '' {
+			parsed := catalog.parse_resolvers_md(text)
+			providers, unusable := catalog.providers_from_entries(parsed.entries)
+			dnscrypt_providers = providers.clone()
+			warnings << store.Warning{
+				level: 'info'
+				key: 'catalog'
+				message: 'dnscrypt catalog: ${parsed.entries.len} resolvers listed, ${providers.len} usable as DoH providers, ${unusable.len} skipped (${summarize_dnscrypt_skips(unusable)})'
+			}
+			if parsed.skipped.len > 0 {
+				warnings << store.Warning{
+					level: 'warn'
+					key: 'catalog'
+					message: 'dnscrypt catalog: ${parsed.skipped.len} stamp(s) failed to decode and were ignored'
+				}
+			}
+		}
+	}
+
+	user_providers := catalog.load_userconf(catalog.userconf_path()) or {
+		warnings << store.Warning{
+			level: 'warn'
+			key: 'catalog'
+			message: 'user provider file could not be loaded: ${err.msg()}'
+		}
+		[]catalog.Provider{}
+	}
+
+	merged := catalog.merge(embedded, dnscrypt_providers, user_providers)
+	for note in merged.skipped {
+		warnings << store.Warning{
+			level: 'info'
+			key: 'catalog'
+			message: note
+		}
+	}
+
+	if opts.require.len == 0 {
+		return merged.catalog
+	}
+	required := opts.require
+	return catalog.Catalog{
+		version: merged.catalog.version
+		generated: merged.catalog.generated
+		providers: merged.catalog.providers.filter(fn [required] (p catalog.Provider) bool {
+			for tag in required {
+				if tag !in p.tags {
+					return false
+				}}
+			return true
+		})
+		cdn_hosts: merged.catalog.cdn_hosts
+	}
+}
+
+// summarize_dnscrypt_skips turns the skip reasons providers_from_entries
+// returns into three counts. Reported per-entry it would be hundreds of lines
+// for a run that never asked to see them; docs/DATA.md never promised more
+// than knowing how many were unusable and roughly why.
+fn summarize_dnscrypt_skips(skipped []string) string {
+	mut dnscrypt_protocol := 0
+	mut no_address := 0
+	mut other := 0
+	for s in skipped {
+		if s.contains('DNSCrypt-protocol stamp') {
+			dnscrypt_protocol++
+		} else if s.contains('stamp names no address') {
+			no_address++
+		} else {
+			other++
+		}
+	}
+	mut parts := []string{}
+	if dnscrypt_protocol > 0 {
+		parts << '${dnscrypt_protocol} DNSCrypt-protocol'
+	}
+	if no_address > 0 {
+		parts << '${no_address} with no address'
+	}
+	if other > 0 {
+		parts << '${other} other'
+	}
+	return parts.join(', ')
+}
+
 // version_line is what `--version` prints and what a bug report should carry.
 // The commit is absent from a build that was not cut from a repository, which
 // is a fact about that build rather than something to paper over.
@@ -197,6 +307,8 @@ fn usage() {
 	eprintln('  --history <path>   append the run to a JSONL history file')
 	eprintln('  --timeout <ms>     per-query timeout (default: 2000)')
 	eprintln('  --cold-zone <zone> wildcard zone for the cold probe')
+	eprintln('  --catalog <name>   embedded, dnscrypt  (default: embedded)')
+	eprintln('  --require <tags>   comma-separated tags every measured provider must carry')
 	eprintln('  --ca-bundle <path> CA bundle for DoT, overriding the system cascade')
 	eprintln('  --tui              watch the run in a full-screen terminal interface')
 	eprintln('  --palette <name>   ${known_palettes.join(', ')}  (TUI only, default: default)')
@@ -214,7 +326,8 @@ fn usage() {
 // value_options are the flags that take an argument. standalone_options and the
 // help flags stand alone.
 const value_options = ['--profile', '--only', '--rounds', '--probes', '--format', '--history',
-	'--timeout', '--cold-zone', '--ca-bundle', '--seed', '--palette', '--region']
+	'--timeout', '--cold-zone', '--ca-bundle', '--seed', '--palette', '--region', '--catalog',
+	'--require']
 
 const standalone_options = ['--force', '--tui', '--no-color', '--no-geo']
 
@@ -329,6 +442,21 @@ fn parse_args(args []string) !Options {
 				n := u32(value.u64())
 				o = Options{ ...o, seed: [n, n ^ u32(0x9e3779b9)] }
 			}
+			'--catalog' {
+				if value !in ['embedded', 'dnscrypt'] {
+					return error('unknown catalog "${value}"; known: embedded, dnscrypt')
+				}
+				o = Options{ ...o, catalog: value }
+			}
+			'--require' {
+				tags := value.split(',').map(it.trim_space()).filter(it != '')
+				for tag in tags {
+					if tag !in catalog.tag_vocabulary {
+						return error('unknown tag "${tag}" in --require; known: ${catalog.tag_vocabulary.keys().join(', ')}')
+					}
+				}
+				o = Options{ ...o, require: tags }
+			}
 			else {
 				return error('unknown option "${arg}"')
 			}
@@ -397,7 +525,7 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 		}
 	}
 
-	cat := catalog.embedded()!
+	cat := load_catalog(opts, mut warnings)!
 
 	// Before anything is measured, and never again. docs/ARCHITECTURE.md
 	// § Region detection; `--no-geo` skips it and leaves the fields empty.
