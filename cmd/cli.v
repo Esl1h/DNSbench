@@ -53,6 +53,11 @@ struct Options {
 	// cached DNSCrypt public-resolvers list; anything else is the default.
 	catalog string
 	require []string
+	// near runs a reachability pre-pass and keeps only the fastest candidates,
+	// per docs/DATA.md § Layer 2. Meant for --catalog dnscrypt, at hundreds of
+	// candidates; harmless on the embedded catalog alone, which never exceeds
+	// the keep count and so is never filtered.
+	near bool
 }
 
 fn main() {
@@ -236,22 +241,78 @@ fn load_catalog(opts Options, mut warnings []store.Warning) !catalog.Catalog {
 		}
 	}
 
-	if opts.require.len == 0 {
-		return merged.catalog
-	}
-	required := opts.require
-	return catalog.Catalog{
-		version: merged.catalog.version
-		generated: merged.catalog.generated
-		providers: merged.catalog.providers.filter(fn [required] (p catalog.Provider) bool {
+	mut providers := merged.catalog.providers.clone()
+	if opts.require.len > 0 {
+		required := opts.require
+		providers = providers.filter(fn [required] (p catalog.Provider) bool {
 			for tag in required {
 				if tag !in p.tags {
 					return false
-				}}
+				}
+			}
 			return true
 		})
+	}
+
+	// --only is an explicit selection; pre-filtering candidates it did not ask
+	// about would only risk dropping the one key the caller actually wants.
+	if opts.near && opts.only.len == 0 {
+		providers = near_filter(providers, catalog.near_default_keep, opts.timeout, mut warnings)
+	}
+
+	return catalog.Catalog{
+		version: merged.catalog.version
+		generated: merged.catalog.generated
+		providers: providers
 		cdn_hosts: merged.catalog.cdn_hosts
 	}
+}
+
+// near_filter is the network-touching half of `--near`; catalog.near_rank is
+// the pure half that decides who survives, and is what gets tested. A TCP
+// connect, never a full query: docs/DATA.md § Layer 2 calls it "a fast
+// reachability pass", and a connect is the cheapest thing this tool can time
+// that still tells a live IP from a dead one.
+//
+// Paced like the real plan, docs/METHODOLOGY.md § Rate limit: this pass adds
+// its own load to hundreds of resolvers before the run proper even starts,
+// and a fast reachability check is not an excuse to hammer them.
+fn near_filter(providers []catalog.Provider, keep int, timeout time.Duration, mut warnings []store.Warning) []catalog.Provider {
+	mut candidates := []catalog.Provider{}
+	for p in providers {
+		if p.near_target() != '' {
+			candidates << p
+		}
+	}
+	// Nothing to trim: either the catalog is already small, or every candidate
+	// worth ranking has no address a TCP connect can test.
+	if candidates.len <= keep {
+		return providers
+	}
+
+	mut pacer := core.new_pacer(core.rate_interval)
+	start := time.new_stopwatch()
+	mut measured := []catalog.NearMeasurement{}
+	for p in candidates {
+		now := start.elapsed().nanoseconds()
+		send_at := pacer.reserve(p.key, now, core.jitter_factor())
+		if send_at > now {
+			time.sleep(send_at - now)
+		}
+		ms := core.connect_ms(p.near_target(), timeout) or { continue }
+		measured << catalog.NearMeasurement{
+			key: p.key
+			ms: ms
+		}
+	}
+
+	kept := catalog.near_rank(providers, measured, keep)
+	warnings << store.Warning{
+		level: 'info'
+		key: 'catalog'
+		message: '--near: ${candidates.len} candidates checked, ${measured.len} reachable, ${kept.len} kept'
+	}
+	return kept
 }
 
 // summarize_dnscrypt_skips turns the skip reasons providers_from_entries
@@ -329,7 +390,7 @@ const value_options = ['--profile', '--only', '--rounds', '--probes', '--format'
 	'--timeout', '--cold-zone', '--ca-bundle', '--seed', '--palette', '--region', '--catalog',
 	'--require']
 
-const standalone_options = ['--force', '--tui', '--no-color', '--no-geo']
+const standalone_options = ['--force', '--tui', '--no-color', '--no-geo', '--near']
 
 fn parse_args(args []string) !Options {
 	mut o := Options{}
@@ -355,6 +416,9 @@ fn parse_args(args []string) !Options {
 				}
 				'--no-geo' {
 					o = Options{ ...o, no_geo: true }
+				}
+				'--near' {
+					o = Options{ ...o, near: true }
 				}
 				else {
 					o = Options{ ...o, no_color: true }

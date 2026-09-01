@@ -248,12 +248,17 @@ the embedded catalog's hand-verified entries do.
 A key present in both the embedded and DNSCrypt catalogs keeps the embedded entry; the DNSCrypt
 copy is skipped and reported. `docs/DATA.md` § Precedence spells out why.
 
-### Next: `--near`
+`--near` runs a TCP connect against every candidate that has an address to dial, paced the same
+way the measurement plan is, and keeps the fastest 25, docs/DATA.md's default. A candidate with
+no dialable address at all is kept unconditionally rather than excluded by a check that never
+ran; a candidate that was dialled and never answered is dropped. The ranking (`catalog/near.v`)
+holds no socket and is what is tested; the connects themselves live in `cmd/cli.v`, the only
+layer allowed to touch the network. It stayed sequential rather than gaining a worker pool: a
+live check against 30 real candidates from the DNSCrypt list took 3.4 s, which scales to under a
+minute across the full list, and `measure_edge` already establishes the sequential-connect
+precedent for exactly this shape of work.
 
-Probing four hundred resolvers fully is slow and impolite. `--near` still needs a low-rate
-reachability pre-pass, kept undesigned deliberately: what probe it runs, at what rate, and
-against how large a candidate pool are all open questions the rest of `--catalog dnscrypt`
-did not need answered.
+Layer 2 is complete.
 
 ## Phases
 

@@ -28,12 +28,12 @@ detection, over DNS and opt-out. The terminal interface, under
 view, and profile cycling that re-ranks what was measured without measuring it again. The full
 optional catalog: `dnsbench update` fetches and verifies the DNSCrypt public-resolvers list,
 `--catalog dnscrypt` parses its `sdns://` stamps and merges them in under the embedded catalog,
-and `~/.config/dnsbench/providers.toml` overrides both.
+`~/.config/dnsbench/providers.toml` overrides both, and `--near` keeps a run to the fastest
+subset instead of every listed resolver.
 
-**Not built yet.** The `history` subcommand. `--near`, the reachability pre-pass that keeps a
-`--catalog dnscrypt` run to a fast subset instead of every listed resolver. The regional domain
-sets, so the detected region travels in the output and does not yet change which names are
-queried. The pinned Tranco domain set, for which eight names stand in under the honest label
+**Not built yet.** The `history` subcommand. The regional domain sets, so the detected region
+travels in the output and does not yet change which names are queried. The pinned Tranco
+domain set, for which eight names stand in under the honest label
 `builtin:top8`. DoH is HTTP/1.1 only, because V's stdlib has no HTTP/2 client, and every DoH
 result says so; two providers serve DoH over h2 alone and are recorded as refusing rather than
 as unreachable.
@@ -160,12 +160,15 @@ irresponsible. Opt in explicitly:
 ```sh
 dnsbench --catalog dnscrypt
 dnsbench --catalog dnscrypt --require nolog,dnssec,nofilter
+dnsbench --catalog dnscrypt --near
 ```
 
 Only DoH stamps become providers; DNSCrypt-protocol entries name an address no transport here
 speaks. A key already curated in the embedded catalog is never replaced by the DNSCrypt list's
-copy of the same key. `--near`, a reachability pre-pass to keep a run to a fast subset instead
-of every listed resolver, is a later release.
+copy of the same key. `--near` runs a TCP connect against every candidate, paced the same way
+the measurement plan is, and keeps the fastest 25 for the full battery instead of every listed
+resolver; a candidate with nothing to dial is kept unconditionally, and `--only` bypasses the
+pre-pass entirely since it is already an explicit, short list.
 
 ### Exit codes
 
