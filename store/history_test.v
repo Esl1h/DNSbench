@@ -79,15 +79,17 @@ fn test_sparkline_of_nothing_is_empty() {
 	assert sparkline([]f64{}) == ''
 }
 
-fn test_last_duration_reads_the_documented_units() ! {
-	assert last_duration('30d')! == 30 * 24 * time.hour
-	assert last_duration('12h')! == 12 * time.hour
-	assert last_duration('2w')! == 2 * 7 * 24 * time.hour
+fn test_parse_duration_reads_the_documented_units() ! {
+	assert parse_duration('30d')! == 30 * 24 * time.hour
+	assert parse_duration('12h')! == 12 * time.hour
+	assert parse_duration('2w')! == 2 * 7 * 24 * time.hour
+	assert parse_duration('5m')! == 5 * time.minute
+	assert parse_duration('30s')! == 30 * time.second
 }
 
-fn test_last_duration_rejects_nonsense() {
+fn test_parse_duration_rejects_nonsense() {
 	for bad in ['', '5', '5x', '-3d', '0d'] {
-		if _ := last_duration(bad) {
+		if _ := parse_duration(bad) {
 			assert false, '"${bad}" should have been refused'
 		}
 	}

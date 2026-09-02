@@ -68,12 +68,16 @@ piece, not part of this milestone's line.
 
 ### M5 — Beyond
 
-- [ ] Region-aware domain sets and RIR table generation at release
+- [ ] Region-aware domain sets, curated per docs/DATA.md § Domain sets and generated at release
+      time from a real, pinned Tranco snapshot. "RIR table generation" is stale: an embedded
+      RIR-to-ASN table was an earlier draft's plan for region detection, dropped before it was
+      built in favour of the Team Cymru DNS lookup docs/ARCHITECTURE.md § Region detection
+      describes, which already ships
 - [x] `history` aggregation and sparklines
 - [x] `--catalog dnscrypt`: the `sdns://` parser, three-layer precedence merge,
       `--require`, `--near` reachability prefilter
 - [x] DNS interception / hijack detection as a first-class check
-- [ ] `--watch` mode for continuous monitoring with threshold alerts
+- [x] `--watch` mode for continuous monitoring with threshold alerts
 
 ## Open decisions
 

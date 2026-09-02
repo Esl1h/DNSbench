@@ -67,6 +67,17 @@ struct Options {
 	// Unrelated to `history`, which is where a measurement run writes to; that
 	// flag names a target to append to, this one names a source to read back.
 	file string
+	// watch repeats the measurement at this interval instead of running once.
+	// Empty means watch mode is off.
+	watch string
+	// watch_count stops the loop after this many measurements. Zero means
+	// forever, until interrupted.
+	watch_count int
+	// alert_edge_ms is the edge_penalty threshold `--watch` warns past, per
+	// docs/OUTPUT.md § Exit codes' own example of what a monitoring job wants
+	// to know. None means that check is off; the winning-provider check,
+	// OUTPUT.md's other example, always runs.
+	alert_edge_ms ?f64
 }
 
 fn main() {
@@ -110,6 +121,15 @@ fn main() {
 		return
 	}
 
+	if opts.watch != '' {
+		if opts.tui {
+			eprintln('dnsbench: --watch and --tui are two different ways of watching a run; pick one')
+			exit(store.exit_usage)
+		}
+		run_watch(opts)
+		return
+	}
+
 	if opts.tui {
 		// The TUI owns the terminal, the run and the exit code. It falls back to
 		// this path itself when the terminal cannot host it.
@@ -141,6 +161,68 @@ fn main() {
 	}
 
 	exit(store.exit_code(result))
+}
+
+// run_watch is `--watch`: `run` repeated at a fixed interval, printed each
+// time, appended to history each time when --history was given, and compared
+// against the previous measurement for the two alerts docs/OUTPUT.md § Exit
+// codes names: the winning provider changing, and, opted into with
+// --alert-edge, a provider's edge penalty crossing a threshold.
+//
+// A single tick failing does not stop the loop. The whole reason to watch a
+// link over time is that it is expected to have bad moments, and a
+// monitoring tool that quits on the first one is not monitoring anything.
+// It runs until interrupted, or until --watch-count measurements are done.
+fn run_watch(opts Options) {
+	// parse_args already refused this flag unless it parsed once; a second
+	// failure here would mean that check regressed, not that this input is bad.
+	interval := store.parse_duration(opts.watch) or {
+		panic('unreachable: --watch ${err.msg()}')
+	}
+
+	mut iteration := 0
+	mut previous := ?store.RunResult(none)
+
+	for {
+		iteration++
+		eprintln('--- dnsbench watch: run ${iteration} at ${time.now().format_rfc3339()} ---')
+		done := opts.watch_count > 0 && iteration >= opts.watch_count
+
+		mut watcher := Watcher(SilentWatcher{})
+		result := run(opts, mut watcher) or {
+			eprintln('dnsbench: ${err.msg()}')
+			if done {
+				return
+			}
+			time.sleep(interval)
+			continue
+		}
+
+		match opts.format {
+			'json' { print(result.to_json()) }
+			'csv' { print(result.to_csv()) }
+			'markdown' { print(result.to_markdown()) }
+			else { print(result.to_table()) }
+		}
+
+		if opts.history != '' {
+			store.append(opts.history, result) or {
+				eprintln('dnsbench: could not append history to ${opts.history}: ${err.msg()}')
+			}
+		}
+
+		if prev := previous {
+			for alert in store.watch_alerts(prev, result, opts.alert_edge_ms) {
+				eprintln('ALERT: ${alert}')
+			}
+		}
+		previous = result
+
+		if done {
+			return
+		}
+		time.sleep(interval)
+	}
 }
 
 // update fetches the DNSCrypt resolver list and verifies its signature.
@@ -235,7 +317,7 @@ fn show_history(opts Options) ! {
 
 	mut since := ''
 	if opts.last != '' {
-		duration := store.last_duration(opts.last)!
+		duration := store.parse_duration(opts.last)!
 		since = time.now().add(-duration).format_rfc3339()
 	}
 
@@ -504,11 +586,14 @@ fn usage() {
 	eprintln('  --no-geo           do not look up the public address, ASN or region')
 	eprintln('  --force            measure even with a tunnel interface up')
 	eprintln('  --seed <n>         fix the shuffle, for a reproducible plan')
+	eprintln('  --watch <dur>      repeat the run every <n>s, <n>m, <n>h, <n>d or <n>w')
+	eprintln('  --watch-count <n>  stop after n measurements (default: forever)')
+	eprintln("  --alert-edge <ms>  --watch alerts when a provider's edge penalty passes this")
 	eprintln('  -V, --version')
 	eprintln('  -h, --help')
 	eprintln('')
 	eprintln('  dnsbench history options:')
-	eprintln('  --last <dur>       only runs within this window: <n>h, <n>d or <n>w')
+	eprintln('  --last <dur>       only runs within this window: <n>h, <n>d, <n>w, ...')
 	eprintln('  --asn <asn>        only this network, e.g. AS27699')
 	eprintln('  --provider <key>   only this provider')
 	eprintln('  --plot             sparkline of p50 over time; needs --provider')
@@ -521,7 +606,7 @@ fn usage() {
 // help flags stand alone.
 const value_options = ['--profile', '--only', '--rounds', '--probes', '--format', '--history',
 	'--timeout', '--cold-zone', '--ca-bundle', '--seed', '--palette', '--region', '--catalog',
-	'--require', '--last', '--asn', '--provider', '--file']
+	'--require', '--last', '--asn', '--provider', '--file', '--watch', '--watch-count', '--alert-edge']
 
 const standalone_options = ['--force', '--tui', '--no-color', '--no-geo', '--near', '--plot']
 
@@ -658,7 +743,7 @@ fn parse_args(args []string) !Options {
 				o = Options{ ...o, require: tags }
 			}
 			'--last' {
-				store.last_duration(value) or {
+				store.parse_duration(value) or {
 					return error('--last ${err.msg()}')
 				}
 				o = Options{ ...o, last: value }
@@ -671,6 +756,24 @@ fn parse_args(args []string) !Options {
 			}
 			'--file' {
 				o = Options{ ...o, file: value }
+			}
+			'--watch' {
+				store.parse_duration(value) or { return error('--watch ${err.msg()}') }
+				o = Options{ ...o, watch: value }
+			}
+			'--watch-count' {
+				n := value.int()
+				if n < 1 {
+					return error('--watch-count needs a positive integer, got "${value}"')
+				}
+				o = Options{ ...o, watch_count: n }
+			}
+			'--alert-edge' {
+				ms := value.f64()
+				if ms <= 0 {
+					return error('--alert-edge needs a positive number of milliseconds, got "${value}"')
+				}
+				o = Options{ ...o, alert_edge_ms: ms }
 			}
 			else {
 				return error('unknown option "${arg}"')

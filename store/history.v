@@ -175,12 +175,13 @@ pub fn sparkline(values []f64) string {
 	return out
 }
 
-// last_duration parses the compact form `--last` takes: a positive integer
-// followed by h (hours), d (days) or w (weeks). Nothing fancier: it names a
-// cutoff, not a calendar.
-pub fn last_duration(text string) !time.Duration {
+// parse_duration reads the compact form both `--last` and `--watch` take: a
+// positive integer followed by a unit, s (seconds), m (minutes), h (hours),
+// d (days) or w (weeks). Nothing fancier: it names a cutoff or an interval,
+// not a calendar.
+pub fn parse_duration(text string) !time.Duration {
 	if text.len < 2 {
-		return error('"${text}" is not a duration; use a number followed by h, d or w')
+		return error('"${text}" is not a duration; use a number followed by s, m, h, d or w')
 	}
 	unit := text[text.len - 1]
 	n := text[..text.len - 1].int()
@@ -188,9 +189,11 @@ pub fn last_duration(text string) !time.Duration {
 		return error('"${text}" is not a positive duration')
 	}
 	return match unit {
+		`s` { n * time.second }
+		`m` { n * time.minute }
 		`h` { n * time.hour }
 		`d` { n * 24 * time.hour }
 		`w` { n * 7 * 24 * time.hour }
-		else { error('"${text}" must end in h, d or w') }
+		else { error('"${text}" must end in s, m, h, d or w') }
 	}
 }

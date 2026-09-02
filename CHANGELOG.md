@@ -10,6 +10,11 @@ comparability and `history` must be able to detect it.
 ## [Unreleased]
 
 ### Added
+- `--watch <dur>`: repeats the run at a fixed interval instead of running once, printing and
+  appending to `--history` each time. Alerts when the winning provider changes, always, and,
+  with `--alert-edge <ms>`, when a provider's edge penalty crosses that threshold, the two cases
+  docs/OUTPUT.md's own monitoring-job example named. A tick that fails does not stop the loop.
+  `--watch-count` bounds it for scripting; `--watch` and `--tui` are refused together
 - `dnsbench history`: reads `$XDG_DATA_HOME/dnsbench/runs.jsonl` (or `--file <path>`) back,
   filters by `--last <n>h|d|w`, `--asn` and `--provider`, and either prints an aggregated table,
   grouped by network and provider with mean/min/max p50 and the latest score, or, with `--plot`,

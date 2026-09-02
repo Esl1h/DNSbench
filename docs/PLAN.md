@@ -290,6 +290,25 @@ column set and the grouped-by-default rendering are this implementation's judgme
 spec it is checked against; the aggregation and filtering semantics, and the refusal to mix
 incomparable lines, are not.
 
+### Done: `--watch`
+
+`docs/ROADMAP.md` named this milestone in one line, "continuous monitoring with threshold
+alerts", with no interval syntax, no alert vocabulary and no exit behaviour specified anywhere
+else. The design is this implementation's own, built from the one concrete example
+`docs/OUTPUT.md` § Exit codes gives: "a monitoring job can alert when the winning provider
+changes or when `edge_penalty` for the configured resolver crosses a threshold." Both cases are
+what `store/watch_alerts` checks, and nothing else; a third kind of alert is a decision left
+open rather than guessed at.
+
+`--watch <dur>` repeats `run` at a fixed interval (`store/history.v`'s duration parser, extended
+with `s` and `m` since `--last`'s original `h`/`d`/`w` never needs to name an interval this
+short), printing and, with `--history`, appending each measurement the same as a single run
+would. A tick that fails does not stop the loop: a monitoring tool that quits on the first bad
+moment on the link is not monitoring anything. The winning-provider check always runs;
+`--alert-edge <ms>` opts into the second. `--watch-count` bounds the loop for scripting and
+testing; without it, the loop runs until interrupted. `--watch` and `--tui` are refused
+together, two different ways of watching a run that do not compose.
+
 ## Phases
 
 ### Phase 0: foundation, no V code

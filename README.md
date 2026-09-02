@@ -33,7 +33,8 @@ measuring it again. The full optional catalog: `dnsbench update` fetches and ver
 DNSCrypt public-resolvers list,
 `--catalog dnscrypt` parses its `sdns://` stamps and merges them in under the embedded catalog,
 `~/.config/dnsbench/providers.toml` overrides both, and `--near` keeps a run to the fastest
-subset instead of every listed resolver.
+subset instead of every listed resolver. `--watch` repeats the run on an interval and alerts
+when the winning provider changes or a provider's edge penalty crosses a threshold.
 
 **Not built yet.** The regional domain sets, so the detected region
 travels in the output and does not yet change which names are queried. The pinned Tranco
@@ -191,6 +192,25 @@ one row per network and provider: how many runs, the mean/min/max p50, and the l
 than one network. A network, cold mode, domain set or probe is never averaged in with another;
 `network.asn` and `network.ifname` are why a fibre run and a mobile run on the same machine
 never get mixed into one meaningless number.
+
+### Watch mode
+
+```sh
+dnsbench --watch 15m --history "$XDG_DATA_HOME/dnsbench/runs.jsonl" --only quad9,cloudflare
+dnsbench --watch 5m --alert-edge 50 --only quad9 --probes warm,ecs
+dnsbench --watch 15m --watch-count 4   # four measurements, then stop
+```
+
+`--watch <dur>` repeats the run at a fixed interval, `<n>s`, `<n>m`, `<n>h`, `<n>d` or `<n>w`,
+printing and, with `--history`, appending each measurement exactly as a single run would; run it
+alongside `dnsbench history --plot` in another terminal and the plot grows with every tick.
+A tick that fails is logged and the loop keeps going rather than stopping: the whole reason to
+watch a link over time is that it is expected to have bad moments. Two alerts run to stderr,
+docs/OUTPUT.md's own examples of what a monitoring job wants to know: the winning provider
+changing, checked on every tick, and, opted into with `--alert-edge <ms>`, a provider's edge
+penalty crossing that line. `--watch-count` stops the loop after that many measurements, for
+scripting and testing; without it, `--watch` runs until interrupted. `--watch` and `--tui` are
+two different ways of watching a run and are refused together.
 
 ### Exit codes
 
