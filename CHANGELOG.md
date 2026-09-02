@@ -9,7 +9,23 @@ comparability and `history` must be able to detect it.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-02
+
 ### Added
+- `--require filtering`: the ad-filtering verdict `docs/METHODOLOGY.md` documented as usable
+  this way, applied after `measure_capabilities` runs rather than as a catalog pre-filter, since
+  it reads the `filter` probe's own result and not a declared tag. Refused up front, before
+  anything is measured, if `--probes` does not include `filter`
+- Every provider's `tcp`, `dot_warm` and `doh` connection is opened concurrently before the
+  paced walk begins, instead of one at a time on the plan's own first step needing each: neither
+  `dot_warm` nor `doh` times `open()`, only `query()`, so this changes no reported number, only
+  how long a run with several encrypted providers waits before measuring starts. Each attempt is
+  bounded by the probe's own timeout
+- `core.dial_tcp_bounded`: every transport's `open()` now connects with a deadline rather than
+  through `net.dial_tcp` directly, the same fix `connect_ms` already had for the edge probe.
+  Without it, a provider whose port is black-holed cost not only one connect at the operating
+  system's own timeout, but that same unbounded connect again on every later plan step needing
+  it, since a failed `open()` leaves nothing behind to stop the retry
 - `--watch <dur>`: repeats the run at a fixed interval instead of running once, printing and
   appending to `--history` each time. Alerts when the winning provider changes, always, and,
   with `--alert-edge <ms>`, when a provider's edge penalty crosses that threshold, the two cases
@@ -106,7 +122,13 @@ comparability and `history` must be able to detect it.
 - `excluded: "refused"`, for a provider that answered every query and resolved none of them
 - Project documentation and specification (ARCHITECTURE, METHODOLOGY, SCORING, TUI, DATA, OUTPUT)
 - Curated provider catalog, 16 entries, endpoints verified 2026-08-28
-- Domain sets pinned to `tranco:K2XVW` retrieved 2026-08-15
+- `data/domains/global.txt`: the pinned `warm` domain set, Tranco's top 25 unfiltered, pinned to
+  `tranco:K9QPW` retrieved 2026-09-02
+- `data/domains/{sa,na,eu,me,af,apac}.txt`: the six regional domain sets `docs/DATA.md` § Domain
+  sets specified, each a Tranco ccTLD filter against the same country buckets `core/geo.v`'s
+  region detection already buckets ASN lookups into, no manual curation added on top. Merges
+  automatically with `global.txt` once a region is detected, `global + regional` and never
+  regional alone, de-duplicated, carrying the merge in the domains id as `tranco:<id>+<region>`
 - JSON Schema for the output contract, `schema_version: 1`
 - `docs/PLAN.md`: development phases, settled decisions, and the V stdlib facts verified
   against a compiler before any code was written
@@ -240,6 +262,10 @@ comparability and `history` must be able to detect it.
   change reported numbers
 
 ### Fixed
+- `measure_edge` and `measure_capabilities` dispatch their own queries against a live provider,
+  outside the interleaved plan `execute` paces through its `Pacer`, so the run's 10 qps
+  per-provider budget did not cover them. Both now hold their own `Pacer` and reserve a slot
+  before every query
 - The process died with exit 141 and no output part-way through the first DoT run. V does not
   mask `SIGPIPE`, and `dot_warm` holds a connection open across every other provider's turn,
   which is exactly the idle connection a DoT server closes. `main` now ignores `SIGPIPE`, and
