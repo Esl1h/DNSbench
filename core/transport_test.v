@@ -350,3 +350,21 @@ fn test_connect_ms_gives_up_at_the_budget() ! {
 	assert elapsed >= 500
 	assert elapsed < 1500
 }
+
+fn test_tcp_transport_open_gives_up_at_the_budget() {
+	// The same black hole the connect_ms tests above use, this time through
+	// the transport every tcp probe step actually opens. Before
+	// dial_tcp_bounded, a dead provider's port cost this open() the
+	// operating system's own connect timeout, and paid it again on every
+	// later step needing the connection, since a failed open() leaves
+	// nothing behind to stop the retry. docs/PLAN.md § Concurrency.
+	mut t := TcpTransport{}
+	sw := time.new_stopwatch()
+	if _ := t.open(ip: '192.0.2.1', port: 443, timeout: 500 * time.millisecond) {
+		assert false, 'expected an error'
+	}
+	elapsed := sw.elapsed().milliseconds()
+
+	assert elapsed >= 500
+	assert elapsed < 1500
+}

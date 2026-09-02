@@ -106,7 +106,7 @@ fn dial_tls(target Target, hostname string, ca_bundle string) !(&net.TcpConn, &s
 		return error('a TLS connection needs a CA bundle; V loads no system trust store')
 	}
 
-	mut tcp := net.dial_tcp(target.dial_address()!)!
+	mut tcp := dial_tcp_bounded(target.dial_address()!, target.timeout)!
 	tcp.set_read_timeout(target.timeout)
 	tcp.set_write_timeout(target.timeout)
 

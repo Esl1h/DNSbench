@@ -202,7 +202,7 @@ pub fn (t TcpTransport) reusable() bool {
 // must time this call, not just query().
 pub fn (mut t TcpTransport) open(target Target) ! {
 	t.close()
-	t.conn = net.dial_tcp(target.dial_address()!)!
+	t.conn = dial_tcp_bounded(target.dial_address()!, target.timeout)!
 	t.conn.set_read_timeout(target.timeout)
 	t.conn.set_write_timeout(target.timeout)
 	t.target = target
@@ -324,6 +324,49 @@ pub fn connect_ms(address string, budget time.Duration) !f64 {
 				return error(outcome.err)
 			}
 			return outcome.ms
+		}
+		budget {
+			return error('no connection to ${address} within ${budget.milliseconds()} ms')
+		}
+	}
+	return error('connect to ${address} ended without an outcome')
+}
+
+// ── bounded dial, for every transport's own open() ──────────────────────────
+struct DialOutcome {
+	conn &net.TcpConn = unsafe { nil }
+	err  string
+}
+
+// dial_tcp_bounded is connect_ms's same connect-with-a-deadline, handing back
+// the live connection instead of timing and closing it: every transport's
+// open() goes through this rather than net.dial_tcp directly, for the reason
+// connect_ms's own comment gives. Without it, a provider whose tcp, dot_warm
+// or doh port is black-holed does not merely cost one open() the length of
+// the operating system's own connect timeout: docs/PLAN.md § Concurrency
+// found it retried, still unbounded, on every later plan step needing that
+// same connection, since a failed open() never leaves anything behind that
+// would stop the retry.
+fn dial_tcp_bounded(address string, budget time.Duration) !&net.TcpConn {
+	ch := chan DialOutcome{ cap: 1 }
+
+	spawn fn (address string, ch chan DialOutcome) {
+		conn := net.dial_tcp(address) or {
+			ch <- DialOutcome{
+				err: err.msg()
+			}
+			return
+		}
+		ch <- DialOutcome{
+			conn: conn
+		}
+	}(address, ch)
+	select {
+		outcome := <-ch {
+			if outcome.err != '' {
+				return error(outcome.err)
+			}
+			return outcome.conn
 		}
 		budget {
 			return error('no connection to ${address} within ${budget.milliseconds()} ms')

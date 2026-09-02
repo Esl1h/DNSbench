@@ -381,14 +381,31 @@ own turn in the plan; a provider that times out is simply left for the plan's ex
 `open()` to try again, so a black hole costs exactly what it already cost before this existed,
 once, and never blocks another provider's warm-up from finishing.
 
-Left alone, and found rather than fixed: a provider whose `tcp`, `dot_warm` or `doh` endpoint
-never opens is retried by the plan's lazy `open()` on **every** step that needs it, not once,
-because a failed `open()` never populates the map that would stop the retry, and that `open()`
-carries the same unbounded connect this section's `select` wrapper works around. Against a
+### Done: the lazy retry's own unbounded connect
+
+Found while writing the section above, and fixed separately: a provider whose `tcp`, `dot_warm`
+or `doh` endpoint never opens was retried by the plan's lazy `open()` on **every** step that
+needed it, not once, because a failed `open()` never populated the map that would stop the
+retry, and that `open()` called `net.dial_tcp` directly, the same unbounded connect
+`warm_connections`'s `select` wrapper works around for the warm-up pass alone. Against a
 provider with a dead `doh` endpoint this cost about a hundred seconds in a live run, dwarfing
-everything `warm_connections` saves. It is a real, pre-existing cost in the sequential path
-itself, not something concurrent warm-up introduced or could fix from outside it, and it is
-outside the scope of what was asked here.
+everything `warm_connections` saves, since the warm-up only ever gets one bounded attempt per
+provider and the plan walk was still making the unbounded one on every later step.
+
+`core.dial_tcp_bounded`, in `core/transport.v` next to `connect_ms` and built the same way, is
+the fix at the root instead of another wrapper around one caller: `TcpTransport.open()` and
+`dial_tls()` (which both `DotTransport` and `DohTransport` go through) call it instead of
+`net.dial_tcp` directly, so every `open()` anywhere in the codebase is bounded now, the plan's
+lazy retries included, not only the ones `warm_connections` already covered. `connect_ms` keeps
+its own copy of the same four lines rather than being rewritten to share it: it discards the
+connection and returns a timing, `dial_tcp_bounded` hands the connection back, and the existing
+`read_exact_tls` precedent in `core/tls.v` is this codebase's own answer for when a shared
+generic would need more explaining than the duplication does.
+
+Verified against the same black hole the `connect_ms` tests already used, `192.0.2.1`
+(TEST-NET-1): `TcpTransport.open()` and `DotTransport.open()` each now give up within their
+configured budget instead of the operating system's, in `core/transport_test.v` and
+`core/tls_test.v`.
 
 ### Done: pacing outside the plan
 

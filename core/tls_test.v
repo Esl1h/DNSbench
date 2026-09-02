@@ -1,6 +1,7 @@
 module core
 
 import os
+import time
 
 // The handshake itself is verified by hand against a live resolver, because a
 // mock TLS endpoint would prove that the code talks to the mock. What is
@@ -72,6 +73,26 @@ fn test_a_dot_transport_without_a_hostname_refuses_to_open() {
 	} else {
 		assert err.msg().contains('hostname')
 	}
+}
+
+fn test_a_dot_transport_gives_up_at_the_budget() {
+	// 192.0.2.1 is TEST-NET-1: routable nowhere, so the connect open() makes
+	// before it ever touches TLS is what has to give up here.
+	// core.dial_tcp_bounded is what makes that possible; transport_test.v has
+	// the equivalent test for the plain tcp transport, and connect_ms's own
+	// tests are where the black hole and the reasoning for it first appear.
+	mut t := DotTransport{
+		hostname: 'dns.example.net'
+		ca_bundle: '/dev/null'
+	}
+	sw := time.new_stopwatch()
+	if _ := t.open(ip: '192.0.2.1', port: 853, timeout: 500 * time.millisecond) {
+		assert false, 'expected an error'
+	}
+	elapsed := sw.elapsed().milliseconds()
+
+	assert elapsed >= 500
+	assert elapsed < 1500
 }
 
 fn test_a_dot_transport_used_before_open_is_an_error() {
