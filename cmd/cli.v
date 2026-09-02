@@ -449,10 +449,13 @@ fn load_catalog(opts Options, mut warnings []store.Warning) !catalog.Catalog {
 	}
 
 	mut providers := merged.catalog.providers.clone()
-	if opts.require.len > 0 {
-		required := opts.require
-		providers = providers.filter(fn [required] (p catalog.Provider) bool {
-			for tag in required {
+	// filtering is excluded here: it names the filter probe's measured verdict,
+	// applied to the run's results after measurement, not a catalog tag any
+	// provider entry carries.
+	required_tags := opts.require.filter(it != 'filtering')
+	if required_tags.len > 0 {
+		providers = providers.filter(fn [required_tags] (p catalog.Provider) bool {
+			for tag in required_tags {
 				if tag !in p.tags {
 					return false
 				}
@@ -577,7 +580,8 @@ fn usage() {
 	eprintln('  --timeout <ms>     per-query timeout (default: 2000)')
 	eprintln('  --cold-zone <zone> wildcard zone for the cold probe')
 	eprintln('  --catalog <name>   embedded, dnscrypt  (default: embedded)')
-	eprintln('  --require <tags>   comma-separated tags every measured provider must carry')
+	eprintln('  --require <tags>   comma-separated catalog tags, plus "filtering" for the')
+	eprintln('                     measured ad-filtering verdict (needs the filter probe)')
 	eprintln('  --ca-bundle <path> CA bundle for DoT, overriding the system cascade')
 	eprintln('  --tui              watch the run in a full-screen terminal interface')
 	eprintln('  --palette <name>   ${known_palettes.join(', ')}  (TUI only, default: default)')
@@ -736,8 +740,11 @@ fn parse_args(args []string) !Options {
 			'--require' {
 				tags := value.split(',').map(it.trim_space()).filter(it != '')
 				for tag in tags {
-					if tag !in catalog.tag_vocabulary {
-						return error('unknown tag "${tag}" in --require; known: ${catalog.tag_vocabulary.keys().join(', ')}')
+					// filtering is not a catalog tag: it reads the filter probe's
+					// measured verdict rather than a provider's own declaration.
+					// docs/METHODOLOGY.md § filter.
+					if tag != 'filtering' && tag !in catalog.tag_vocabulary {
+						return error('unknown tag "${tag}" in --require; known: filtering, ${catalog.tag_vocabulary.keys().join(', ')}')
 					}
 				}
 				o = Options{ ...o, require: tags }
@@ -883,6 +890,10 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 		}
 	}
 
+	if 'filtering' in opts.require && 'filter' !in probes {
+		return error('--require filtering needs the filter probe: add --probes ...,filter')
+	}
+
 	// The trust anchor is resolved once, before anything is measured, so a
 	// missing bundle is a startup error rather than sixteen identical handshake
 	// failures. docs/ARCHITECTURE.md § TLS trust anchor.
@@ -940,6 +951,16 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 	mut capabilities := map[string]Capability{}
 	if probes.any(it in capability_probes) {
 		capabilities = measure_capabilities(subjects, probes, opts)
+	}
+
+	if 'filtering' in opts.require {
+		// A measured verdict, applied after the fact rather than as a catalog
+		// pre-filter: docs/METHODOLOGY.md § filter says the filtering verdict is
+		// "usable as a filter", which only exists once the probe has run.
+		subjects = subjects.filter(capabilities[it.key].filters_ads or { false })
+		if subjects.len == 0 {
+			return error('no provider filters ads: --require filtering matched nothing')
+		}
 	}
 
 	mut edge := map[string]core.EdgePenalty{}

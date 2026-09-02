@@ -185,8 +185,6 @@ same block page from every resolver.
   with algorithm 13, and answers a fresh random label with `192.0.2.1` at a TTL of 60. `delv`
   validates it from the root. Pointing `--cold-zone` at your own zone is still supported; DATA
   § Setting the zone up has the records and the verification commands.
-- **`--require`.** METHODOLOGY § filter says the filtering verdict is usable as a filter,
-  `--require filtering`. Nothing implements the flag.
 
 ### What the TUI cost, and what it changed underneath
 
@@ -307,6 +305,16 @@ moment on the link is not monitoring anything. The winning-provider check always
 `--alert-edge <ms>` opts into the second. `--watch-count` bounds the loop for scripting and
 testing; without it, the loop runs until interrupted. `--watch` and `--tui` are refused
 together, two different ways of watching a run that do not compose.
+
+### Done: `--require filtering`
+
+METHODOLOGY § filter names the measured filtering verdict as "usable as a filter,
+`--require filtering`" but never says whether it selects catalog metadata or a probe result.
+`filtering` cannot be the former: it is not in `catalog.tag_vocabulary`, and no provider entry
+declares it. It is the `filter` probe's verdict on `ads`, so `--require filtering` is applied
+after `measure_capabilities` rather than during `load_catalog`'s pre-run tag filter, and refuses
+early, before anything is measured, if `filter` was not requested. A run left with no provider
+after the filter is an error rather than an empty table.
 
 ## Phases
 

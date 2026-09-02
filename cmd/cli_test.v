@@ -60,6 +60,23 @@ fn test_an_unknown_profile_is_refused_by_name() {
 	}
 }
 
+fn test_require_accepts_the_measured_filtering_token() ! {
+	// "filtering" is not a catalog tag: it reads the filter probe's verdict
+	// after the run, docs/METHODOLOGY.md § filter. It must not be rejected as
+	// an unknown catalog tag.
+	o := parse_args(['--require', 'nolog, filtering'])!
+	assert o.require == ['nolog', 'filtering']
+}
+
+fn test_an_unknown_require_tag_is_refused() {
+	if _ := parse_args(['--require', 'turbo']) {
+		assert false
+	} else {
+		assert err.msg().contains('unknown tag')
+		assert err.msg().contains('filtering')
+	}
+}
+
 fn test_an_unknown_probe_or_format_is_refused() {
 	if _ := parse_args(['--probes', 'dot']) {
 		assert false
