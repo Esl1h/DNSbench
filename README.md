@@ -1,5 +1,8 @@
 # dnsbench
 
+[![CI](https://github.com/Esl1h/DNSbench/actions/workflows/ci.yml/badge.svg)](https://github.com/Esl1h/DNSbench/actions/workflows/ci.yml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+
 **Rank DNS resolvers from your own connection, including the metric nobody else measures.**
 
 Every public DNS ranking answers the question *"which resolver is fast, on average, as seen
@@ -12,36 +15,43 @@ me to the right CDN edge afterwards?"*
 telemetry, and no network access beyond the measurement itself. A CLI, and a full-screen
 terminal interface beside it under `--tui`.
 
+![The full battery, ranked, EDGE column and DNSSEC/filtering badges included](docs/img/tui-full-battery.png)
+
 ## Status
 
 Pre-release, and the gap between what is specified and what is built is wide enough to state
 up front. The documents in `docs/` are the specification and were written before any code;
 they describe the finished tool, not the current binary.
 
-**Working today.** UDP, TCP, DoT and DoH transports. All nine probes: `warm`, `tcp`, `cold`,
-`ecs`, `dot-fresh`, `dot-warm`, `doh`, `dnssec` and `filter`. The composite score with five
-weight profiles, run-relative normalisation, and tiers from a bootstrap interval on the score.
-Table, JSON, CSV and Markdown output against a versioned schema. Append-only JSONL history, and
-`dnsbench history` to read it back: filtered by network, provider or time window, grouped and
-aggregated, or plotted as a sparkline. Local caches and system resolvers measured and labelled
-apart. ASN, operator and region
-detection, over DNS and opt-out. Transparent DNS hijack detection, a second address query to
-8.8.8.8 compared against the one region detection already makes to OpenDNS. The terminal
-interface, under `--tui`, with the table filling in live, sorting, filtering, search, a
-per-provider detail view, and profile cycling that re-ranks what was measured without
-measuring it again. The full optional catalog: `dnsbench update` fetches and verifies the
-DNSCrypt public-resolvers list,
-`--catalog dnscrypt` parses its `sdns://` stamps and merges them in under the embedded catalog,
-`~/.config/dnsbench/providers.toml` overrides both, and `--near` keeps a run to the fastest
-subset instead of every listed resolver. `--watch` repeats the run on an interval and alerts
-when the winning provider changes or a provider's edge penalty crosses a threshold.
+**Working today:**
 
-**Not built yet.** The regional domain sets, so the detected region
-travels in the output and does not yet change which names are queried. The pinned Tranco
-domain set, for which eight names stand in under the honest label
-`builtin:top8`. DoH is HTTP/1.1 only, because V's stdlib has no HTTP/2 client, and every DoH
-result says so; two providers serve DoH over h2 alone and are recorded as refusing rather than
-as unreachable.
+- UDP, TCP, DoT and DoH transports; all nine probes: `warm`, `tcp`, `cold`, `ecs`,
+  `dot-fresh`, `dot-warm`, `doh`, `dnssec` and `filter`
+- The composite score, five weight profiles, run-relative normalisation, and tiers from a
+  bootstrap interval on the score
+- Table, JSON, CSV and Markdown output against a versioned schema
+- Append-only JSONL history, and `dnsbench history` to read it back: filtered by network,
+  provider or time window, grouped and aggregated, or plotted as a sparkline
+- Local caches and system resolvers measured and labelled apart
+- ASN, operator and region detection over DNS, and transparent DNS hijack detection alongside
+  it, a second address query to 8.8.8.8 compared against the one already made to OpenDNS
+- The terminal interface under `--tui`: live table, sorting, filtering, search, a per-provider
+  detail view, and profile cycling that re-ranks what was measured without measuring again
+- The full optional catalog: `dnsbench update` fetches and verifies the DNSCrypt
+  public-resolvers list, `--catalog dnscrypt` parses its `sdns://` stamps and merges them in
+  under the embedded catalog, `~/.config/dnsbench/providers.toml` overrides both, and `--near`
+  keeps a run to the fastest subset instead of every listed resolver
+- `--watch`: repeats the run on an interval and alerts when the winning provider changes or a
+  provider's edge penalty crosses a threshold
+
+**Not built yet:**
+
+- Regional domain sets, so the detected region changes which names are queried instead of just
+  travelling in the output
+- The pinned Tranco domain set: eight names stand in for now, under the honest label
+  `builtin:top8`
+- DoH over HTTP/2. V's stdlib has no h2 client, so every DoH result is HTTP/1.1 and says so;
+  two providers that serve DoH over h2 alone are recorded as refusing rather than as unreachable
 
 `docs/PLAN.md` has the state of every module and what each remaining phase involves.
 `docs/ROADMAP.md` has the milestones.
@@ -105,9 +115,11 @@ dnsbench --probes warm,tcp                # pick the probes
 dnsbench --history ~/.local/share/dnsbench/runs.jsonl
 ```
 
-`dnsbench --help` lists every flag the binary actually accepts, which is the list to trust,
-and `dnsbench --version` says which commit the binary was built from. `man dnsbench` documents
-all of it once installed.
+The sections below cover the highlights; `dnsbench --help` lists every flag the binary actually
+accepts, which is the list to trust, and `dnsbench --version` says which commit the binary was
+built from. `man dnsbench` ([packaging/dnsbench.1](packaging/dnsbench.1)) is the full reference
+once installed: every flag, every exit status, every environment variable and file dnsbench
+reads or writes, with worked examples for the catalog, history and watch mode.
 
 A run refuses to start when a tunnel interface is up, because it would be measuring the tunnel
 and not the link. `--force` overrides it and says so in the output.
@@ -117,6 +129,8 @@ and not the link. `--force` overrides it and says so in the output.
 ```sh
 dnsbench --tui --probes warm,cold,ecs,dot-warm,dnssec,filter --cold-zone probe.dnsbench.esli.blog
 ```
+
+![The table filling in mid-run, with the progress bar and the keybindings footer](docs/img/tui-live.png)
 
 The table fills in while the run happens rather than appearing at the end. `s` sorts, `tab`
 changes which probe fills the latency columns, `/` searches, `f` filters, `enter` opens a
@@ -138,12 +152,36 @@ construction and the resolver has to recurse. It needs a wildcard zone to ask ag
 dnsbench --probes warm,cold --cold-zone probe.dnsbench.esli.blog
 ```
 
-That zone is operated by this project: delegated, DNSSEC-signed, wildcard onto RFC-reserved
-addresses that nothing can connect to. It is deliberately not hosted by any resolver in the
-catalog, because `cold` measures the hop from a resolver to the authoritative and an
-authoritative run by one of the resolvers under test would hand that resolver an advantage no
-column would explain. `docs/DATA.md` has the reasoning, the records, and the verification
-commands for pointing the flag at your own zone instead.
+### The `probe.dnsbench.esli.blog` zone
+
+This is the wildcard zone the cold probe ships pointed at by default, and it is operated by
+this project, not a third-party service dnsbench happens to depend on.
+
+- **Delegated**, a child of `esli.blog`, hosted separately on Bunny DNS (`kiki.bunny.net`,
+  `coco.bunny.net`) so a mistake in the probe zone, a nameserver migration, or a traffic spike
+  never touches anything else on the parent domain.
+- **DNSSEC-signed**, algorithm 13 with NSEC black lies. A tool that scores resolvers on DNSSEC
+  validation cannot reasonably ship an unsigned reference zone.
+- **Wildcard onto RFC-reserved addresses**: `192.0.2.1` (TEST-NET-1) and `2001:db8::1` (the
+  documentation prefix). Nothing on the internet routes to either, which is the point: the
+  probe measures a lookup, and must never become a connection test.
+- **A 60-second TTL on the wildcard**, which is not decoration: it is what every resolver
+  caches the answer for, it travels in the comparison, and changing it changes the measurement.
+- **Not operated by, or affiliated with, any resolver in the catalog.** `cold` measures the hop
+  from a resolver to the authoritative, once root and TLD referrals are cached; an
+  authoritative run by one of the resolvers under test would hand that resolver a home-field
+  advantage no column in the output would explain. This ruled out hosting it on Cloudflare
+  (which operates two catalog entries) and on DigitalOcean (whose nameservers resolve into
+  Cloudflare's own ranges).
+- **Anycast, with a São Paulo point of presence**, so the zone adds a small, comparable distance
+  rather than a large constant that would swamp the very hop `cold` is trying to measure.
+
+If the zone is ever unreachable, `cold` degrades to `wild` (recursion through whatever
+authoritative a random label happens to land on) with a warning in the output, rather than
+silently producing a wrong number. Point `--cold-zone` at your own wildcard DNSSEC zone instead
+if you'd rather not depend on this one; `docs/DATA.md` § Cold-probe zone has the full reasoning,
+the exact records, and the `kdig`/`delv` commands to verify a replacement zone before trusting
+it.
 
 ### The optional DNSCrypt catalog
 
@@ -229,9 +267,9 @@ latency.
 ## What it does not do
 
 - It does not change your DNS settings. It measures and reports; you decide.
-- It does not phone home. The only network traffic is the measurement itself, three DNS
-  queries at startup to name the network you are on, and an explicit `dnsbench update` once
-  that exists. `--no-geo` removes the three.
+- It does not phone home. The only network traffic is the measurement itself, four DNS queries
+  at startup to name the network you are on and check for transparent DNS interception, and an
+  explicit `dnsbench update` when you ask for it. `--no-geo` removes the four.
 - It does not publish your address. The public IP is used to look up the ASN and is then
   discarded; the output carries `AS27699` and the operator's name, never the address. A result
   is meant to be pasteable into an issue.
@@ -256,6 +294,7 @@ bug.
 | [docs/OUTPUT.md](docs/OUTPUT.md) | JSON schema, JSONL history format, stability guarantees |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Milestones and open decisions |
 | [docs/PLAN.md](docs/PLAN.md) | Development phases, settled decisions, verified V facts |
+| [packaging/dnsbench.1](packaging/dnsbench.1) | The man page: every flag, exit status, file and environment variable |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Adding providers, running tests, code style |
 
 ## Language policy
