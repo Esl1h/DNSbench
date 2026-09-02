@@ -1450,6 +1450,15 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 	// it. dot_fresh opens its own and closes it again per query.
 	mut dot := map[string]&core.DotTransport{}
 	mut doh := map[string]&core.DohTransport{}
+
+	// Paying every provider's handshake up front, concurrently, rather than on
+	// the plan's own first tcp/dot_warm/doh step for that provider: the plan
+	// still walks in strict paced order below, so this changes nothing about
+	// which provider is queried while another is being measured. It only moves
+	// the handshake out of that order, because a handshake is not itself a
+	// measurement the plan takes. docs/PLAN.md § Concurrency.
+	warm_connections(subjects, opts, ca_bundle, mut tcp, mut dot, mut doh)
+
 	mut pacer := core.new_pacer(core.rate_interval)
 	start := time.new_stopwatch()
 
@@ -1530,6 +1539,154 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 			continue
 		}
 		subjects[idx].samples[step.probe] << out.ms
+	}
+}
+
+// TcpWarm, DotWarm and DohWarm carry one concurrent connection attempt back
+// from its own thread. `ok` is false on both a real failure and a timeout;
+// either way the plan's own lazy open, unchanged, tries that provider again
+// on its first tcp/dot_warm/doh step, exactly as if warm_connections had
+// never run for it.
+struct TcpWarm {
+	key string
+	ok  bool
+	t   &core.TcpTransport = unsafe { nil }
+}
+
+struct DotWarm {
+	key string
+	ok  bool
+	t   &core.DotTransport = unsafe { nil }
+}
+
+struct DohWarm {
+	key string
+	ok  bool
+	t   &core.DohTransport = unsafe { nil }
+}
+
+// warm_connections opens, concurrently, every persistent connection the plan
+// would otherwise open one at a time on its first tcp, dot_warm or doh step
+// for a given provider. That first step is not a measurement: dot_warm and
+// doh only time query(), never open(), so paying every provider's handshake
+// in parallel here changes no number the plan produces, only how long the
+// run waits before the paced walk below can begin. docs/PLAN.md § Concurrency.
+//
+// Each attempt is bounded by the timeout its probe would already use, via
+// `select`, the same pattern core.connect_ms uses and for the same reason:
+// V's net.dial_tcp has no connect timeout of its own. A provider that does
+// not answer in time is left alone rather than waited on; its thread is
+// abandoned the way connect_ms's is; the plan reaching it later pays exactly
+// the cost it would have paid had warm_connections not run at all.
+fn warm_connections(subjects []Subject, opts Options, ca_bundle string, mut tcp map[string]&core.TcpTransport, mut dot map[string]&core.DotTransport, mut doh map[string]&core.DohTransport) {
+	tcp_ch := chan TcpWarm{ cap: subjects.len }
+	dot_ch := chan DotWarm{ cap: subjects.len }
+	doh_ch := chan DohWarm{ cap: subjects.len }
+	mut tcp_n := 0
+	mut dot_n := 0
+	mut doh_n := 0
+
+	for s in subjects {
+		if 'tcp' in s.probes {
+			tcp_n++
+			target := core.Target{
+				ip: s.ip
+				timeout: opts.timeout
+			}
+			spawn fn (key string, target core.Target, ch chan TcpWarm) {
+				mut t := &core.TcpTransport{}
+				t.open(target) or {
+					ch <- TcpWarm{ key: key }
+					return
+				}
+				ch <- TcpWarm{
+					key: key
+					ok: true
+					t: t
+				}
+			}(s.key, target, tcp_ch)
+		}
+		if 'dot_warm' in s.probes && s.dot_ip != '' && s.dot_host != '' {
+			dot_n++
+			target := core.Target{
+				ip: s.dot_ip
+				port: dot_port
+				timeout: dot_timeout
+			}
+			spawn fn (key string, target core.Target, hostname string, ca_bundle string, ch chan DotWarm) {
+				mut t := &core.DotTransport{
+					hostname: hostname
+					ca_bundle: ca_bundle
+				}
+				t.open(target) or {
+					ch <- DotWarm{ key: key }
+					return
+				}
+				ch <- DotWarm{
+					key: key
+					ok: true
+					t: t
+				}
+			}(s.key, target, s.dot_host, ca_bundle, dot_ch)
+		}
+		if 'doh' in s.probes && s.doh_ip != '' && s.doh_host != '' {
+			doh_n++
+			target := core.Target{
+				ip: s.doh_ip
+				port: doh_port
+				timeout: dot_timeout
+			}
+			spawn fn (key string, target core.Target, hostname string, path string, ca_bundle string, ch chan DohWarm) {
+				mut t := &core.DohTransport{
+					hostname: hostname
+					path: path
+					ca_bundle: ca_bundle
+				}
+				t.open(target) or {
+					ch <- DohWarm{ key: key }
+					return
+				}
+				ch <- DohWarm{
+					key: key
+					ok: true
+					t: t
+				}
+			}(s.key, target, s.doh_host, s.doh_path, ca_bundle, doh_ch)
+		}
+	}
+
+	for _ in 0 .. tcp_n {
+		select {
+			r := <-tcp_ch {
+				if r.ok {
+					tcp[r.key] = r.t
+				}
+			}
+			opts.timeout {
+			}
+		}
+	}
+	for _ in 0 .. dot_n {
+		select {
+			r := <-dot_ch {
+				if r.ok {
+					dot[r.key] = r.t
+				}
+			}
+			dot_timeout {
+			}
+		}
+	}
+	for _ in 0 .. doh_n {
+		select {
+			r := <-doh_ch {
+				if r.ok {
+					doh[r.key] = r.t
+				}
+			}
+			dot_timeout {
+			}
+		}
 	}
 }
 

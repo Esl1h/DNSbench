@@ -63,7 +63,7 @@ dnsbench/
       ┌─────────────────────────────────────┐
       │            core/schedule            │  interleaved, rate-limited plan
       └──────────────────┬──────────────────┘
-                         │  spawn N workers, one channel
+                         │  connections warmed concurrently, plan walked in order
                          ▼
       ┌─────────────────────────────────────┐
       │  core/probe → core/transport        │  the only code that touches the network
@@ -93,19 +93,32 @@ another measurement.
 
 ## Concurrency model
 
-V's `spawn` plus a single result channel. One goroutine per **provider**, not per query —
-this keeps each provider's connection reuse honest and prevents one slow provider from
-serialising the run.
+The measured plan itself walks single-threaded and in order, not one worker per provider as an
+earlier draft of this section specified. Every provider is already interleaved by
+`core/schedule.v`, so walking the plan in order measures every provider under the same
+conditions in turn; a worker per provider would have them contending for the one link being
+measured, on a consumer connection that a benchmark run is supposed to describe rather than
+saturate. `docs/PLAN.md` § Concurrency has the fuller reasoning and the departure from the
+original per-provider-worker draft below.
+
+What does run concurrently is everything that is not itself a measurement: `cmd/cli.v`'s
+`warm_connections` opens every provider's persistent `tcp`, `dot_warm` and `doh` connection at
+once, with `spawn` and one channel per transport kind, before the paced walk begins. Neither
+`dot_warm` nor `doh` times its own `open()`, only `query()`, so this changes no number the plan
+produces — it only removes the wait a provider's own handshake used to impose on every other
+provider's turn. Each attempt is bounded by `select` against the probe's own timeout, the same
+pattern `core.connect_ms` uses for the edge probe's TCP connects, because V's `net.dial_tcp` has
+no connect timeout of its own; a provider that does not answer in time is left for the plan's
+own lazy `open()` to try again exactly as if warm-up had not run for it.
 
 ```v
-ch := chan ProbeResult{cap: providers.len * probes.len}
-for p in providers {
-    spawn worker(p, plan, ch)
-}
+ch := chan DotWarm{ cap: subjects.len }
+spawn fn (key string, target core.Target, hostname string, ca_bundle string, ch chan DotWarm) {
+    mut t := &core.DotTransport{ hostname: hostname, ca_bundle: ca_bundle }
+    t.open(target) or { ch <- DotWarm{ key: key } return }
+    ch <- DotWarm{ key: key, ok: true, t: t }
+}(s.key, target, s.dot_host, ca_bundle, ch)
 ```
-
-Bounded by `--concurrency` (default: `min(providers.len, 8)`). Higher values saturate
-consumer uplinks and corrupt the measurement — this is a benchmark, not a load test.
 
 ## Transport interface
 

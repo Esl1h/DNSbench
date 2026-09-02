@@ -166,12 +166,6 @@ same block page from every resolver.
 
 - **`dnsbench history`.** `store/jsonl.v` writes the file and the comparability rule is tested,
   but no subcommand reads it back and aggregates.
-- **Concurrency.** ARCHITECTURE specifies one worker per provider; `cmd/cli.v` walks the plan in
-  order. The reasoning for the departure is at the top of that file: the plan is already
-  interleaved, so walking it in order measures every provider under the same conditions in turn,
-  where concurrent workers would have them contending for the link they are measuring. Now that
-  DoT and DoH pay a handshake, a full eight-probe run takes minutes, so this is worth
-  revisiting: the handshakes are the part where waiting is not measuring.
 - **The domain set.** `cmd/cli.v` ships eight names as `builtin:top8`, labelled honestly as not
   being the pinned Tranco set. Generating the real one is a release task; see DATA § Tranco.
 - **The regional domain sets.** ASN, operator and region are detected now and travel in the
@@ -302,6 +296,37 @@ moment on the link is not monitoring anything. The winning-provider check always
 `--alert-edge <ms>` opts into the second. `--watch-count` bounds the loop for scripting and
 testing; without it, the loop runs until interrupted. `--watch` and `--tui` are refused
 together, two different ways of watching a run that do not compose.
+
+### Done: concurrency, the bounded version
+
+The full ARCHITECTURE draft, one `spawn` worker per provider walking its own copy of the plan,
+was deliberately never built: it would have every provider contending for the one link the run
+is measuring, which is the fairness property the sequential, interleaved walk exists to hold.
+That reasoning stands and is now in `docs/ARCHITECTURE.md` § Concurrency model in place of the
+stale worker-pool draft. What was genuinely idle time rather than fairness, per the "worth
+revisiting" note this replaces, was each provider's first `tcp`, `dot_warm` or `doh` connection:
+opened lazily on the plan's own first step needing it, which blocks every other provider's turn
+on a handshake that is not itself a measurement, since neither `dot_warm` nor `doh` times
+`open()`.
+
+`warm_connections` opens all of them concurrently before the paced walk starts, one `spawn` plus
+buffered channel per transport kind, verified live against seven DoT and seven DoH endpoints:
+every connection open, done in 175 ms total against sequential opens that would each have paid
+their own handshake in turn. Each attempt is bounded by `select` against the probe's own
+timeout, because V's `net.dial_tcp` has no connect timeout of its own and an unreachable
+endpoint would otherwise hold up every provider that came after it in the warm-up, not only its
+own turn in the plan; a provider that times out is simply left for the plan's existing lazy
+`open()` to try again, so a black hole costs exactly what it already cost before this existed,
+once, and never blocks another provider's warm-up from finishing.
+
+Left alone, and found rather than fixed: a provider whose `tcp`, `dot_warm` or `doh` endpoint
+never opens is retried by the plan's lazy `open()` on **every** step that needs it, not once,
+because a failed `open()` never populates the map that would stop the retry, and that `open()`
+carries the same unbounded connect this section's `select` wrapper works around. Against a
+provider with a dead `doh` endpoint this cost about a hundred seconds in a live run, dwarfing
+everything `warm_connections` saves. It is a real, pre-existing cost in the sequential path
+itself, not something concurrent warm-up introduced or could fix from outside it, and it is
+outside the scope of what was asked here.
 
 ### Done: pacing outside the plan
 
