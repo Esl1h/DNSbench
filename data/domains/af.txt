@@ -1,0 +1,26 @@
+# tranco:K9QPW  retrieved 2026-09-02  ccTLD filter region=af, no manual curation
+bit.ly
+amazon.co.za
+cursor.sh
+betway.co.za
+men.gov.ma
+sarkariresult.com.cm
+betpawa.ug
+cbl.gov.ly
+avito.st
+adsco.re
+notion.so
+tsc.go.ke
+rexify.com.ng
+cutt.ly
+amazon.eg
+google.co.za
+newsroom.bi
+google.com.eg
+fawanews.sc
+betway.co.bw
+education.dz
+google.co.ke
+google.com.ng
+google.com.gh
+google.co.zm

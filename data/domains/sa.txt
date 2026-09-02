@@ -1,0 +1,26 @@
+# tranco:K9QPW  retrieved 2026-09-02  ccTLD filter region=sa, no manual curation
+t.co
+gcdn.co
+uol.com.br
+shopee.com.br
+hostgator.com.br
+g.co
+mercadolivre.com.br
+google.com.br
+amazon.com.br
+www.gov.br
+scdn.co
+mercadolibre.com.ar
+caixa.gov.br
+olx.com.br
+lanacion.com.ar
+huggingface.co
+supabase.co
+acesso.gov.br
+jusbrasil.com.br
+datadome.co
+locaweb.com.br
+terra.com.br
+nfse.gov.br
+afip.gob.ar
+letras.mus.br

@@ -1,0 +1,26 @@
+# tranco:K9QPW  retrieved 2026-09-02  ccTLD filter region=na, no manual curation
+goo.gl
+zoom.us
+sfx.ms
+clarity.ms
+tiktokv.us
+claude.ai
+svc.ms
+amazon.ca
+perplexity.ai
+appcenter.ms
+tiktokw.us
+character.ai
+tiktokpangle.us
+amazon.com.mx
+google.ca
+verify.hn
+mercadolibre.com.mx
+cbc.ca
+donmai.us
+canada.ca
+polybuzz.ai
+simpcity.cr
+missav.ai
+aka.ms
+conectate.com.do

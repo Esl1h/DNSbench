@@ -1,0 +1,26 @@
+# tranco:K9QPW  retrieved 2026-09-02  ccTLD filter region=apac, no manual curation
+miit.gov.cn
+twitch.tv
+google.cn
+quickconnect.to
+beian.gov.cn
+yahoo.co.jp
+sina.com.cn
+eye4.cn
+xcal.tv
+amazon.co.jp
+amzn.to
+google.com.hk
+rakuten.co.jp
+360.cn
+amazon.in
+mega.co.nz
+shopee.co.id
+teads.tv
+ameblo.jp
+amazon.com.au
+vivo.com.cn
+mailchi.mp
+docomo.ne.jp
+singtelchina.cn
+amagi.tv

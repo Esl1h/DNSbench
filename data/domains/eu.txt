@@ -1,0 +1,26 @@
+# tranco:K9QPW  retrieved 2026-09-02  ccTLD filter region=eu, no manual curation
+mail.ru
+dzen.ru
+youtu.be
+wa.me
+yandex.ru
+workbox.dk
+achmea.nl
+nic.ru
+t.me
+yccdn.ru
+okcdn.ru
+vkuserphoto.ru
+iiko.it
+discord.gg
+reg.ru
+vk.ru
+ack.de
+mts.ru
+t-online.de
+bbc.co.uk
+ozon.ru
+telecid.ru
+linktr.ee
+mangosip.ru
+www.gov.uk

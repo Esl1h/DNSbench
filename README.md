@@ -43,13 +43,12 @@ they describe the finished tool, not the current binary.
   keeps a run to the fastest subset instead of every listed resolver
 - `--watch`: repeats the run on an interval and alerts when the winning provider changes or a
   provider's edge penalty crosses a threshold
+- The pinned Tranco domain set, `global.txt`'s real top 25 embedded from a citable snapshot id,
+  plus regional sets for six ccTLD groupings that merge in automatically once a region is
+  detected
 
 **Not built yet:**
 
-- Regional domain sets, so the detected region changes which names are queried instead of just
-  travelling in the output
-- The pinned Tranco domain set: eight names stand in for now, under the honest label
-  `builtin:top8`
 - DoH over HTTP/2. V's stdlib has no h2 client, so every DoH result is HTTP/1.1 and says so;
   two providers that serve DoH over h2 alone are recorded as refusing rather than as unreachable
 

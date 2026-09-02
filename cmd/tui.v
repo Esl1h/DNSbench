@@ -133,7 +133,7 @@ fn (mut w LiveWatcher) emit(subjects []Subject, step int, total int, final bool)
 	partial := assemble(subjects, edge, capabilities, none, w.opts, w.ctx.net, w.ctx.origin, w.ctx.cat, w.ctx.started, duration, w.ctx.warnings, core.BootstrapSpec{
 		resamples: tui_live_resamples
 		seed: w.opts.seed
-	})
+	}, w.ctx.domain_set_id)
 
 	// A snapshot that dropped because the drawing thread was busy is not worth
 	// waiting for: another one follows in well under a second.

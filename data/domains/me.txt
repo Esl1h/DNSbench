@@ -1,0 +1,26 @@
+# tranco:K9QPW  retrieved 2026-09-02  ccTLD filter region=me, no manual curation
+ynet.co.il
+divar.ir
+turkiye.gov.tr
+sozcu.com.tr
+iau.ir
+musicdel.ir
+absher.sa
+osym.gov.tr
+yandex.com.tr
+google.com.tr
+amazon.ae
+google.co.il
+meb.gov.tr
+adtarget.com.tr
+mofa.gov.sa
+easytrader.ir
+google.ae
+amazon.sa
+google.com.sa
+ns.tr
+amazon.com.tr
+google.ps
+hurriyet.com.tr
+iranlms.ir
+ble.ir

@@ -907,6 +907,8 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 		return error('no provider left to measure')
 	}
 
+	domain_set := warm_domains(origin.region)!
+
 	// The edge probe is not a latency probe and does not belong in the plan: it
 	// asks each CDN host once per provider and times a TCP connect, where the
 	// plan is rounds over a domain set. It also cannot rank on its own, because
@@ -934,7 +936,7 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 		provider_keys: keys
 		probes: timed
 		probes_for: probes_for
-		domains: warm_domains
+		domains: domain_set.domains
 		rounds: opts.rounds
 		seed: opts.seed
 	)!
@@ -945,6 +947,7 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 		cat: cat
 		started: started
 		warnings: warnings
+		domain_set_id: domain_set.id
 	})
 	execute(plan, mut subjects, opts, ca_bundle, mut watcher)!
 
@@ -989,7 +992,7 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 	}
 
 	duration := f64(time.since(started).microseconds()) / 1_000_000.0
-	result := assemble(subjects, edge, capabilities, best_rtt, opts, net, origin, cat, started, duration, warnings, core.BootstrapSpec{ seed: opts.seed })
+	result := assemble(subjects, edge, capabilities, best_rtt, opts, net, origin, cat, started, duration, warnings, core.BootstrapSpec{ seed: opts.seed }, domain_set.id)
 	// The samples travel with the result so that a frontend can re-rank under a
 	// different weighting without measuring anything again. docs/TUI.md § p.
 	watcher.finish(result, build_samples(subjects, edge, capabilities, net.ipv6), best_rtt)
@@ -1225,23 +1228,39 @@ fn edge_sample(s Subject, host catalog.CdnHost, opts Options, mut udp map[string
 	}
 }
 
-// warm_domains stands in for the pinned Tranco set of docs/DATA.md, which is
-// generated offline and embedded at release time. This is not that set, and the
-// id below says so rather than claiming a Tranco ID it does not have.
+// warm_domains loads the pinned Tranco global set of docs/DATA.md § Tranco,
+// pinned, and, when `region` is one of the six named regions, merges in that
+// region's own set: docs/DATA.md § Regional sets says a regional run is
+// always `global + regional`, never regional alone, because a ccTLD filter
+// alone under-represents the global sites a region's users actually reach.
+// `region` being `global`, empty, or anything catalog.regional_domains does
+// not recognise, `--no-geo`'s case among them, leaves the set at global only.
 //
-// Eight names, because a round is one pass over the set and five rounds must
-// clear the thirty-sample floor a ranked result needs: 5 x 8 = 40, which is the
-// same n the worked example in docs/TUI.md shows.
-const warm_domains = [
-	'google.com',
-	'youtube.com',
-	'wikipedia.org',
-	'amazon.com',
-	'github.com',
-	'cloudflare.com',
-	'microsoft.com',
-	'reddit.com',
-]
+// The id carries the merge the way docs/DATA.md's own example does:
+// `tranco:<id>+<region>`. `catalog.global_domains` and `catalog.regional_domains`
+// both parse the same `# tranco:<id> ...` header this function's error would
+// otherwise be silent about, so a corrupted embed fails the run rather than
+// measuring an empty or half-populated domain set.
+fn warm_domains(region string) !catalog.DomainSet {
+	global := catalog.global_domains()!
+	regional := catalog.regional_domains(region) or { return global }
+
+	mut seen := map[string]bool{}
+	mut domains := []string{cap: global.domains.len + regional.domains.len}
+	for list in [global.domains, regional.domains] {
+		for d in list {
+			if d in seen {
+				continue
+			}
+			seen[d] = true
+			domains << d
+		}
+	}
+	return catalog.DomainSet{
+		id: '${global.id}+${region}'
+		domains: domains
+	}
+}
 
 // known_probes is the vocabulary of --probes, in the output contract's
 // spelling. docs/METHODOLOGY.md § Probes.
@@ -1279,8 +1298,6 @@ const dot_port = 853
 const doh_port = 443
 
 const dot_timeout = 5 * time.second
-
-const domain_set_id = 'builtin:top8'
 
 // offered narrows a probe list to the encrypted probes a provider can answer.
 //
@@ -1417,11 +1434,12 @@ mut:
 // enough for a frontend to assemble a result out of partial samples without
 // waiting for the run to end.
 struct RunContext {
-	net      core.NetInfo
-	origin   core.Origin
-	cat      catalog.Catalog
-	started  time.Time
-	warnings []store.Warning
+	net           core.NetInfo
+	origin        core.Origin
+	cat           catalog.Catalog
+	started       time.Time
+	warnings      []store.Warning
+	domain_set_id string
 }
 
 // SilentWatcher is what the plain CLI passes. A run nobody is watching pays one
@@ -1895,7 +1913,7 @@ fn query_name(step core.Step, cold_zone string) string {
 	return '${rand.string_from_set('abcdefghijklmnopqrstuvwxyz0123456789', 16)}.${cold_zone}'
 }
 
-fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities map[string]Capability, best_rtt ?f64, opts Options, net core.NetInfo, origin core.Origin, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning, spec core.BootstrapSpec) store.RunResult {
+fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities map[string]Capability, best_rtt ?f64, opts Options, net core.NetInfo, origin core.Origin, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning, spec core.BootstrapSpec, domain_set_id string) store.RunResult {
 	weights := core.profiles[opts.profile] or { core.Weights{} }
 
 	samples := build_samples(subjects, edge, capabilities, net.ipv6)
@@ -1992,6 +2010,10 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities m
 			}
 			domains: store.DomainInfo{
 				warm: domain_set_id
+				// Empty rather than "global": docs/OUTPUT.md shows this field
+				// carrying the region actually merged in, and global is the
+				// case nothing was.
+				regional: if origin.region != core.region_global { origin.region } else { '' }
 				cold_mode: if opts.cold_zone == '' { 'off' } else { 'own' }
 			}
 		}

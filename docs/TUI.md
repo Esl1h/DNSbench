@@ -33,7 +33,7 @@ dnsbench --tui --only cloudflare,quad9,google,adguard,opendns,controld-unfiltere
 
 ```
 dnsbench 0.1.0   ASN unknown   wlp3s0   IPv6: yes   region: global
-catalog v7 (embedded, 16)   domains builtin:top8   cold: own   profile: balanced   view: warm
+catalog v7 (embedded, 16)   domains tranco:K9QPW   cold: own   profile: balanced   view: warm
 6 providers  ████████████████████████████████████████████████████████████████████  05:30 elapsed
     #v PROVIDER            SCORE    p50    p95    JIT   LOSS    EDGE    MIS    DoT  FLAGS
     1  AdGuard              78.0    8.5   21.2    6.4   0.0%    +3.5  0/8      8.3  +ads ~nolog

@@ -38,7 +38,7 @@ Three formats, one guarantee: **anything that consumes `--json` will keep workin
   },
   "datasets": {
     "catalog": { "source": "embedded", "version": 3, "providers": 16 },
-    "domains": { "warm": "tranco:K2XVW", "regional": "sa", "cold_mode": "own" },
+    "domains": { "warm": "tranco:K2XVW+sa", "regional": "sa", "cold_mode": "own" },
     "cdn_hosts": { "total": 4, "stale": 0 }
   },
   "results": [

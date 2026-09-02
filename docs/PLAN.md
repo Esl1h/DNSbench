@@ -166,12 +166,6 @@ same block page from every resolver.
 
 - **`dnsbench history`.** `store/jsonl.v` writes the file and the comparability rule is tested,
   but no subcommand reads it back and aggregates.
-- **The domain set.** `cmd/cli.v` ships eight names as `builtin:top8`, labelled honestly as not
-  being the pinned Tranco set. Generating the real one is a release task; see DATA § Tranco.
-- **The regional domain sets.** ASN, operator and region are detected now and travel in the
-  output, but `region` does not yet choose a domain list: DATA § Domain sets describes seven
-  files and the binary embeds none of them. Step 2 of the cascade, the config file, is also
-  still missing, because there is no config file.
 - **The cold-probe zone.** Live. `probe.dnsbench.esli.blog` is delegated to Bunny DNS, signed
   with algorithm 13, and answers a fresh random label with `192.0.2.1` at a TTL of 60. `delv`
   validates it from the root. Pointing `--cold-zone` at your own zone is still supported; DATA
@@ -296,6 +290,74 @@ moment on the link is not monitoring anything. The winning-provider check always
 `--alert-edge <ms>` opts into the second. `--watch-count` bounds the loop for scripting and
 testing; without it, the loop runs until interrupted. `--watch` and `--tui` are refused
 together, two different ways of watching a run that do not compose.
+
+### Done: the pinned Tranco global domain set
+
+`cmd/cli.v` shipped eight hand-picked names as `builtin:top8`, labelled honestly as not the
+pinned Tranco set DATA § Tranco, pinned specifies. It is now: `data/domains/global.txt` carries
+the real top 25, unfiltered, retrieved from Tranco's own citable, permanent list id (`K9QPW`,
+2026-09-02) via `/latest_list`'s redirect, in the exact `# tranco:<id> ...` header form DATA §
+Tranco, pinned shows. `catalog/domains.v` embeds it the same way `catalog/embedded.v` embeds the
+provider TOML and parses the header and the domain lines; `cmd/cli.v`'s `warm_domains()` (the
+former constant, now a function, since parsing a fallible embed cannot be a `const`) returns it,
+and every result's `datasets.domains.warm` field now carries the real id instead of the placeholder.
+
+Unfiltered is not a gap left for later: the raw top 25 includes infrastructure domains
+(`gstatic.com`, `akamai.net`, `gtld-servers.net`) alongside destinations a user would type, and
+DATA § Domain sets calls `global.txt` "unfiltered" by name. Curating it would be a second,
+undocumented domain set wearing the first one's citation.
+
+Twenty-five domains rather than the eight the previous placeholder chose to hit a specific
+40-sample floor: nothing in `docs/SCORING.md`'s worked example or `docs/TUI.md` turned out to
+depend on that number when checked against both files directly, and the one test that did
+(`cmd/cli_test.v`, the ranking-floor test) asserts `>= 30` and passes at either size. The domain
+count DATA.md actually specifies for `warm` is 25, not a number chosen to fit a round count.
+
+### Done: the regional domain sets
+
+ASN, operator and region were detected and travelled in the output since the transparent-
+interception work, but nothing used `region` to choose a domain list: DATA § Domain sets
+described six regional files plus `global.txt` and the binary embedded none of them. It embeds
+all seven now.
+
+`data/domains/{sa,na,eu,me,af,apac}.txt` are each 25 domains, a ccTLD filter against the exact
+country buckets `core/geo.v`'s `countries_sa` and its five siblings already define, applied to
+the same Tranco snapshot (`K9QPW`) `global.txt` uses, taken in rank order. **No manual
+curation was added.** DATA § Regional sets calls for "Tranco ccTLD filter + manual curation"
+specifically because a ccTLD filter alone under-represents the global sites a region's users
+actually reach — `google.com` carries no `.br` — and names four hand-picked Brazilian examples
+by way of illustration. Attempting that curation here would have meant deciding, region by
+region, which domains a reader who has never had ground truth on regional traffic in, say,
+Ghana or Kazakhstan believes are popular there, which is a fabrication risk this project's own
+rule against inventing measurement behaviour argues just as strongly against as it does against
+a fabricated byte vector. Filtering the mechanical output down to hand-vetted entries was tried
+and abandoned for the same reason from the other direction: the first pass removed obvious
+global URL shorteners riding a vanity ccTLD (`t.co`, `goo.gl`), but backfilling to 25 kept
+surfacing more of the same judgment call (`zoom.us`, `bit.ly`, `discord.gg`) with no principled
+place to stop, and DNS query realism does not actually require a domain to be regionally
+*authentic*, only regionally *queried* — which a shortener a region's users click through is,
+same as any other domain. What ships is the plain, reproducible, first-round filter.
+
+The doc's own model already covers the gap the illustration was pointing at: a regional run is
+always `global + regional`, never regional alone, so `google.com` and the rest of `global.txt`
+are in every regional run regardless of what `sa.txt` alone contains. `cmd/cli.v`'s
+`warm_domains(region string)` merges the two, de-duplicating (`mail.ru` and `dzen.ru` are both
+Tranco top-25-unfiltered and RU-ccTLD, so they land in both `global.txt` and `eu.txt`) and
+carrying the merge in the id the way DATA.md's own example does, `tranco:<id>+<region>`. `warm`
+carries the full, self-contained id rather than the bare snapshot id docs/OUTPUT.md's example
+first showed, because `store/jsonl.v`'s flattened history line and the table and markdown
+renderers all read `.warm` alone and never see the separate `.regional` field next to it; that
+field is populated too, for the reader who wants it structured rather than parsed out of a
+suffix. `docs/OUTPUT.md`'s example is updated to match. Region
+detection needs no new wiring: `origin.region` already resolves through the cascade
+ARCHITECTURE § Region detection describes, so a run picks up its region's set the same way it
+already picked up the region string for the `network.region` output field, and `--no-geo` or an
+unresolved region leaves the set at global alone, verified live in both directions.
+
+Step 2 of the region cascade, `~/.config/dnsbench/config.toml`, is unrelated to this and still
+does not exist; it stays exactly as unimplemented as ARCHITECTURE § Region detection already
+says. Building it would be a general config-file feature this task did not ask for, not a
+domain-set task.
 
 ### Done: concurrency, the bounded version
 

@@ -139,13 +139,44 @@ fn test_probes_map_to_the_transports_they_ride() {
 	assert transports_used([]) == []string{}
 }
 
-fn test_the_warm_domain_set_clears_the_ranking_floor_at_the_default_rounds() {
+fn test_the_warm_domain_set_clears_the_ranking_floor_at_the_default_rounds() ! {
 	// A default run that cannot produce a ranked result is a default run that
 	// wastes the user's time. This failed before a round became a full pass
 	// over the set.
-	samples := warm_domains.len * 5
+	samples := warm_domains('global')!.domains.len * 5
 	assert samples >= 30, 'a default run yields ${samples} samples'
 	assert store.exit_ok == 0
+}
+
+fn test_warm_domains_falls_back_to_global_alone_when_region_is_unrecognised() ! {
+	global := warm_domains('global')!
+	unknown := warm_domains('atlantis')!
+	assert unknown.id == global.id
+	assert unknown.domains == global.domains
+}
+
+fn test_warm_domains_merges_the_regional_set_and_carries_its_id() ! {
+	// docs/DATA.md § Regional sets: always global + regional, never regional
+	// alone, and every result carries the merge in the id.
+	global := warm_domains('global')!
+	set := warm_domains('sa')!
+	assert set.id == '${global.id}+sa'
+	for d in global.domains {
+		assert d in set.domains
+	}
+	assert set.domains.len > global.domains.len
+}
+
+fn test_warm_domains_never_repeats_a_domain_present_in_both_sets() ! {
+	// eu.txt's ccTLD filter and global.txt's unfiltered top 25 both name
+	// mail.ru and dzen.ru: querying either twice in one round would weight it
+	// double against every other domain in the set for no declared reason.
+	set := warm_domains('eu')!
+	mut seen := map[string]bool{}
+	for d in set.domains {
+		assert d !in seen, 'duplicate domain ${d}'
+		seen[d] = true
+	}
 }
 
 fn test_the_cold_probe_asks_a_fresh_name_every_time() {
