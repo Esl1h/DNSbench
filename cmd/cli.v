@@ -1017,6 +1017,18 @@ struct Capability {
 	filters_ads       ?bool
 }
 
+// pace enforces the run's per-provider politeness budget outside the plan,
+// where measure_edge and measure_capabilities dispatch their own queries
+// against a live provider rather than walking the interleaved plan `execute`
+// paces through its own Pacer. docs/PLAN.md § Pacing outside the plan.
+fn pace(mut pacer core.Pacer, start time.StopWatch, key string) {
+	now := start.elapsed().nanoseconds()
+	send_at := pacer.reserve(key, now, core.jitter_factor())
+	if send_at > now {
+		time.sleep(send_at - now)
+	}
+}
+
 // measure_capabilities asks each provider the two questions that have an answer
 // rather than a duration.
 //
@@ -1035,6 +1047,9 @@ fn measure_capabilities(subjects []Subject, probes []string, opts Options) map[s
 	want_dnssec := 'dnssec' in probes
 	want_filter := 'filter' in probes
 
+	mut pacer := core.new_pacer(core.rate_interval)
+	start := time.new_stopwatch()
+
 	for s in subjects {
 		mut validating := ?bool(none)
 		mut filtering := ?bool(none)
@@ -1046,7 +1061,9 @@ fn measure_capabilities(subjects []Subject, probes []string, opts Options) map[s
 			mut yes := 0
 			mut no := 0
 			for _ in 0 .. dnssec_attempts {
+				pace(mut pacer, start, s.key)
 				plain := ask_rcode(s, opts, dnssec_probe_name, false, mut udp) or { continue }
+				pace(mut pacer, start, s.key)
 				with_cd := ask_rcode(s, opts, dnssec_probe_name, true, mut udp) or { continue }
 				verdict := core.dnssec_verdict(plain, with_cd) or { continue }
 				if verdict {
@@ -1058,6 +1075,7 @@ fn measure_capabilities(subjects []Subject, probes []string, opts Options) map[s
 			validating = core.majority_verdict(yes, no)
 		}
 		if want_filter {
+			pace(mut pacer, start, s.key)
 			if answer := ask_answer(s, opts, filter_probe_name, mut udp) {
 				filtering = core.is_blocked(answer.code, answer.addresses)
 			}
@@ -1138,8 +1156,16 @@ fn measure_edge(subjects []Subject, hosts []catalog.CdnHost, opts Options) map[s
 		}
 	}
 
+	mut pacer := core.new_pacer(core.rate_interval)
+	start := time.new_stopwatch()
+
 	for host in hosts {
 		for s in subjects {
+			// Only the resolution is a query against the provider under test; the
+			// TCP connect that follows it, inside edge_sample, targets the CDN
+			// host the answer named, a third party the pacer's provider budget
+			// does not describe.
+			pace(mut pacer, start, s.key)
 			out[s.key] << edge_sample(s, host, opts, mut udp)
 		}
 	}

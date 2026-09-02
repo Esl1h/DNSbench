@@ -172,9 +172,6 @@ same block page from every resolver.
   where concurrent workers would have them contending for the link they are measuring. Now that
   DoT and DoH pay a handshake, a full eight-probe run takes minutes, so this is worth
   revisiting: the handshakes are the part where waiting is not measuring.
-- **Pacing outside the plan.** `measure_edge` and `measure_capabilities` walk their own passes
-  and do not go through the `Pacer`. Few queries each, but the run's own politeness rule does
-  not currently cover them.
 - **The domain set.** `cmd/cli.v` ships eight names as `builtin:top8`, labelled honestly as not
   being the pinned Tranco set. Generating the real one is a release task; see DATA § Tranco.
 - **The regional domain sets.** ASN, operator and region are detected now and travel in the
@@ -305,6 +302,18 @@ moment on the link is not monitoring anything. The winning-provider check always
 `--alert-edge <ms>` opts into the second. `--watch-count` bounds the loop for scripting and
 testing; without it, the loop runs until interrupted. `--watch` and `--tui` are refused
 together, two different ways of watching a run that do not compose.
+
+### Done: pacing outside the plan
+
+`measure_edge` and `measure_capabilities` dispatch their own queries against a live provider and
+never went through `execute`'s `Pacer`, so the run's 10 qps per-provider budget did not cover
+them. Both now hold their own `Pacer` and `time.StopWatch`, reserving a slot per query the same
+way `execute` and `near_filter` already did; the shared `pace` helper is the four lines all three
+call sites had in common. `measure_edge` paces the resolution only, keyed by the provider under
+test: the TCP connect that follows, inside `edge_sample`, targets the CDN host the answer named,
+a third party the per-provider budget was never meant to describe. `measure_capabilities` paces
+every `ask_rcode` and `ask_answer` call, since each one is a query to the provider being asked
+whether it validates or filters.
 
 ### Done: `--require filtering`
 
