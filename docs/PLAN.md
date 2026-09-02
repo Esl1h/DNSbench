@@ -4,9 +4,8 @@ The phase plan, the decisions already settled, and the facts verified against a 
 before any code existed. The scratch directory this was derived from was deleted at the end of
 M0 and was never committed, so nothing here depends on it: a fresh clone has everything.
 
-Companion documents: `docs/CHECKLIST.md` is the day-one ordering, `docs/ROADMAP.md` is the
-milestone list, `docs/V-NOTES.md` is the verified V stdlib reference. This file is the bridge
-between them.
+Companion documents: `docs/ROADMAP.md` is the milestone list, `docs/V-NOTES.md` is the verified
+V stdlib reference. This file is the bridge between them.
 
 ## Working discipline
 

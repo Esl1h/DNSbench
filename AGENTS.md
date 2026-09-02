@@ -27,7 +27,7 @@ Read before touching related code:
 | JSON, CSV, JSONL, exit codes | `docs/OUTPUT.md` |
 | Catalog, domain sets | `docs/DATA.md` |
 | Terminal UI | `docs/TUI.md` |
-| What to build next | `docs/PLAN.md`, `docs/ROADMAP.md`, `docs/CHECKLIST.md` |
+| What to build next | `docs/PLAN.md`, `docs/ROADMAP.md` |
 
 Do not invent measurement behaviour. Every probe's semantics are already defined.
 
@@ -90,11 +90,11 @@ contribute to a measured subscore. This is enforced in code, not by convention.
 
 ### 6. Correctness before features
 
-The order in `docs/CHECKLIST.md` is deliberate. Do not start the TUI because it is more fun. A
-pretty table of wrong numbers is worse than no table.
+Do not build the fun part before the correct part. A pretty table of wrong numbers is worse
+than no table.
 
-Week-one exit criterion: measured latency matches `kdig` on the same link, within noise. Until
-that passes, nothing else matters.
+Any new probe or transport must match `kdig` on the same link, within noise, before anything
+built on top of it is trusted.
 
 ## Build and test
 
