@@ -58,6 +58,15 @@ struct Options {
 	// candidates; harmless on the embedded catalog alone, which never exceeds
 	// the keep count and so is never filtered.
 	near bool
+	// The rest are read by the `history` subcommand only.
+	last     string
+	asn      string
+	provider string
+	plot     bool
+	// file overrides history's default $XDG_DATA_HOME/dnsbench/runs.jsonl.
+	// Unrelated to `history`, which is where a measurement run writes to; that
+	// flag names a target to append to, this one names a source to read back.
+	file string
 }
 
 fn main() {
@@ -69,10 +78,12 @@ fn main() {
 	os.signal_ignore(.pipe)
 
 	mut args := os.args[1..].clone()
-	// One subcommand, and it is not a measurement: it fetches the optional
-	// catalog and verifies it. Everything else is flags.
+	// Two subcommands, and neither is a measurement: one fetches the optional
+	// catalog and verifies it, the other reads a history file back. Everything
+	// else is flags.
 	updating := args.len > 0 && args[0] == 'update'
-	if updating {
+	showing_history := args.len > 0 && args[0] == 'history'
+	if updating || showing_history {
 		args = args[1..].clone()
 	}
 
@@ -87,6 +98,14 @@ fn main() {
 		update(opts) or {
 			eprintln('dnsbench: ${err.msg()}')
 			exit(store.exit_catalog_verification)
+		}
+		return
+	}
+
+	if showing_history {
+		show_history(opts) or {
+			eprintln('dnsbench: ${err.msg()}')
+			exit(store.exit_usage)
 		}
 		return
 	}
@@ -182,6 +201,112 @@ fn cache_directory() string {
 		return os.join_path(base, 'dnsbench')
 	}
 	return os.join_path(os.home_dir(), '.cache', 'dnsbench')
+}
+
+// default_history_path is where `--history` on a normal run has no reason to
+// point anywhere else, and where `history` looks when `--file` does not say
+// otherwise: docs/OUTPUT.md § history.
+fn default_history_path() string {
+	base := os.getenv('XDG_DATA_HOME')
+	dir := if base != '' { base } else { os.join_path(os.home_dir(), '.local', 'share') }
+	return os.join_path(dir, 'dnsbench', 'runs.jsonl')
+}
+
+// show_history is `dnsbench history`: read a run history file back, filter
+// it, and either print an aggregated table or, with --plot, one sparkline per
+// (network, probe) series a --provider matched.
+//
+// It prints no warning for lines that failed to parse; a corrupt tail on an
+// otherwise-appended-to file is worth knowing about, and store.read_history
+// already names each one, so those are reported the same way every other
+// per-line problem in this tool is: as part of the answer, not as noise
+// before it.
+fn show_history(opts Options) ! {
+	if opts.plot && opts.provider == '' {
+		return error('--plot needs --provider: a sparkline is one series, and a provider can appear in more than one')
+	}
+
+	path := if opts.file != '' { opts.file } else { default_history_path() }
+	all, parse_errors := store.read_history(path)
+	if all.len == 0 && parse_errors.len == 0 {
+		println('no history at ${path}')
+		return
+	}
+
+	mut since := ''
+	if opts.last != '' {
+		duration := store.last_duration(opts.last)!
+		since = time.now().add(-duration).format_rfc3339()
+	}
+
+	lines := store.filter_lines(all, store.HistoryFilter{
+		since_rfc3339: since
+		asn: opts.asn
+		provider: opts.provider
+	})
+	if lines.len == 0 {
+		println('no matching history in ${path}')
+	} else if opts.plot {
+		print_sparklines(lines)
+	} else {
+		print_history_table(store.aggregate(lines))
+	}
+
+	for e in parse_errors {
+		eprintln('dnsbench: ${path}: ${e}')
+	}
+}
+
+// print_history_table is the default view: one row per (network, cold mode,
+// domain set, probe, provider) bucket store.aggregate found.
+fn print_history_table(groups []store.HistoryGroup) {
+	// col pads and adds the gap itself. pad_right alone does not truncate, so
+	// content that reaches its column's width would otherwise run straight
+	// into the next column with nothing between them.
+	col := fn (text string, width int) string {
+		return pad_right(text, width) + ' '
+	}
+	println('${col('network', 45)}${col('provider', 20)}${col('probe', 7)}${col('runs', 5)}${col('p50 (mean/min/max)', 26)}latest score')
+	for g in groups {
+		p50 := 'mean=${optional_ms(g.p50_mean)} min=${optional_ms(g.p50_min)} max=${optional_ms(g.p50_max)}'
+		score := if s := g.latest_score { '${s:.1f}' } else { '-' }
+		println('${col(g.group_key, 45)}${col(g.provider, 20)}${col(g.probe, 7)}${col(g.runs.str(), 5)}${col(p50, 26)}${score}')
+	}
+}
+
+// print_sparklines groups the already-provider-filtered lines by network and
+// probe, since a single provider can be measured on more than one network or
+// asked about more than one probe, and one sparkline can show only one series.
+fn print_sparklines(lines []store.Line) {
+	mut buckets := map[string][]store.Line{}
+	mut order := []string{}
+	for l in lines {
+		key := '${l.group_key()}'
+		if key !in buckets {
+			order << key
+		}
+		buckets[key] << l
+	}
+	for key in order {
+		bucket := buckets[key]
+		mut p50s := []f64{}
+		for l in bucket {
+			if p50 := l.p50 {
+				p50s << p50
+			}
+		}
+		if p50s.len == 0 {
+			continue
+		}
+		println('${key}: ${store.sparkline(p50s)}  (${p50s.len} samples, latest ${p50s[p50s.len - 1]:.1f} ms)')
+	}
+}
+
+fn optional_ms(v ?f64) string {
+	if x := v {
+		return '${x:.1f}'
+	}
+	return '-'
 }
 
 // load_catalog assembles the three provider layers of docs/DATA.md §
@@ -357,7 +482,8 @@ fn version_line() string {
 
 fn usage() {
 	eprintln('usage: dnsbench [options]')
-	eprintln('       dnsbench update            fetch and verify the DNSCrypt catalog')
+	eprintln('       dnsbench update             fetch and verify the DNSCrypt catalog')
+	eprintln('       dnsbench history [options]  read a JSONL history file back')
 	eprintln('')
 	eprintln('  --profile <name>   ${core.profiles.keys().join(', ')}  (default: balanced)')
 	eprintln('  --only <keys>      comma-separated provider keys')
@@ -381,6 +507,13 @@ fn usage() {
 	eprintln('  -V, --version')
 	eprintln('  -h, --help')
 	eprintln('')
+	eprintln('  dnsbench history options:')
+	eprintln('  --last <dur>       only runs within this window: <n>h, <n>d or <n>w')
+	eprintln('  --asn <asn>        only this network, e.g. AS27699')
+	eprintln('  --provider <key>   only this provider')
+	eprintln('  --plot             sparkline of p50 over time; needs --provider')
+	eprintln('  --file <path>      history file to read (default: \$XDG_DATA_HOME/dnsbench/runs.jsonl)')
+	eprintln('')
 	eprintln('Exit: 0 ok, 1 measured with errors, 2 usage, 3 nothing reachable.')
 }
 
@@ -388,9 +521,9 @@ fn usage() {
 // help flags stand alone.
 const value_options = ['--profile', '--only', '--rounds', '--probes', '--format', '--history',
 	'--timeout', '--cold-zone', '--ca-bundle', '--seed', '--palette', '--region', '--catalog',
-	'--require']
+	'--require', '--last', '--asn', '--provider', '--file']
 
-const standalone_options = ['--force', '--tui', '--no-color', '--no-geo', '--near']
+const standalone_options = ['--force', '--tui', '--no-color', '--no-geo', '--near', '--plot']
 
 fn parse_args(args []string) !Options {
 	mut o := Options{}
@@ -419,6 +552,9 @@ fn parse_args(args []string) !Options {
 				}
 				'--near' {
 					o = Options{ ...o, near: true }
+				}
+				'--plot' {
+					o = Options{ ...o, plot: true }
 				}
 				else {
 					o = Options{ ...o, no_color: true }
@@ -520,6 +656,21 @@ fn parse_args(args []string) !Options {
 					}
 				}
 				o = Options{ ...o, require: tags }
+			}
+			'--last' {
+				store.last_duration(value) or {
+					return error('--last ${err.msg()}')
+				}
+				o = Options{ ...o, last: value }
+			}
+			'--asn' {
+				o = Options{ ...o, asn: value }
+			}
+			'--provider' {
+				o = Options{ ...o, provider: value }
+			}
+			'--file' {
+				o = Options{ ...o, file: value }
 			}
 			else {
 				return error('unknown option "${arg}"')

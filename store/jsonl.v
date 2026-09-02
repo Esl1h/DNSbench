@@ -141,6 +141,33 @@ pub fn append(path string, r RunResult) ! {
 	f.write_string(body)!
 }
 
+// read_history reads every line of a history file back, tolerant of both a
+// file that has never been written (`dnsbench history` before the first
+// `--history` run is not an error) and of one bad line partway through a
+// file that has otherwise been appended to correctly. The second return
+// value names every line that failed to parse, by number.
+pub fn read_history(path string) ([]Line, []string) {
+	if !os.exists(path) {
+		return []Line{}, []string{}
+	}
+	text := os.read_file(path) or { return []Line{}, []string{} }
+
+	mut lines := []Line{}
+	mut errors := []string{}
+	for i, raw in text.split_into_lines() {
+		trimmed := raw.trim_space()
+		if trimmed == '' {
+			continue
+		}
+		line := parse_line(trimmed) or {
+			errors << 'line ${i + 1}: ${err.msg()}'
+			continue
+		}
+		lines << line
+	}
+	return lines, errors
+}
+
 // comparable reports whether two history lines describe measurements that may
 // be aggregated together.
 //

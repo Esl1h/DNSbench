@@ -274,6 +274,22 @@ Google's answer sometimes carries a second TXT string, `edns0-client-subnet <pre
 whatever is between this machine and 8.8.8.8; `first_plain_txt` skips it. Verified against a
 live query.
 
+### Done: `history`
+
+`store/jsonl.v` already wrote the file and carried `comparable` and `group_key`, the logic that
+refuses to mix networks, cold modes, domain sets and probes; nothing read it back. `store/history.v`
+adds the parts that do: `filter_lines` (asn, provider, a `--last` time window compared as plain
+RFC 3339 strings, which sort in time order without a parser), `aggregate` (buckets by network and
+provider, mean/min/max p50, the latest score), and `sparkline` (scaled between a series' own low
+and high, a flat series rendering as the steady middle block rather than an extreme). `cmd/cli.v`
+gained the `history` subcommand, reading `$XDG_DATA_HOME/dnsbench/runs.jsonl` by default,
+`--file` to point elsewhere.
+
+`docs/OUTPUT.md` names the flags and the default location but shows no sample table, so the
+column set and the grouped-by-default rendering are this implementation's judgment call, not a
+spec it is checked against; the aggregation and filtering semantics, and the refusal to mix
+incomparable lines, are not.
+
 ## Phases
 
 ### Phase 0: foundation, no V code

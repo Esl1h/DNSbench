@@ -10,6 +10,12 @@ comparability and `history` must be able to detect it.
 ## [Unreleased]
 
 ### Added
+- `dnsbench history`: reads `$XDG_DATA_HOME/dnsbench/runs.jsonl` (or `--file <path>`) back,
+  filters by `--last <n>h|d|w`, `--asn` and `--provider`, and either prints an aggregated table,
+  grouped by network and provider with mean/min/max p50 and the latest score, or, with `--plot`,
+  a sparkline of p50 over time per network the provider was measured on. Grouping never mixes
+  a network, cold mode, domain set or probe with another, the same refusal `comparable` already
+  enforced when nothing read the file back
 - Transparent DNS hijack detection: a second, independent "what is my address" query to
   8.8.8.8, compared against the one already made to OpenDNS for region detection. A machine
   with nothing intercepting its DNS traffic sees the same egress address from both, since both

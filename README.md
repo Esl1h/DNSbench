@@ -21,8 +21,10 @@ they describe the finished tool, not the current binary.
 **Working today.** UDP, TCP, DoT and DoH transports. All nine probes: `warm`, `tcp`, `cold`,
 `ecs`, `dot-fresh`, `dot-warm`, `doh`, `dnssec` and `filter`. The composite score with five
 weight profiles, run-relative normalisation, and tiers from a bootstrap interval on the score.
-Table, JSON, CSV and Markdown output against a versioned schema. Append-only JSONL history.
-Local caches and system resolvers measured and labelled apart. ASN, operator and region
+Table, JSON, CSV and Markdown output against a versioned schema. Append-only JSONL history, and
+`dnsbench history` to read it back: filtered by network, provider or time window, grouped and
+aggregated, or plotted as a sparkline. Local caches and system resolvers measured and labelled
+apart. ASN, operator and region
 detection, over DNS and opt-out. Transparent DNS hijack detection, a second address query to
 8.8.8.8 compared against the one region detection already makes to OpenDNS. The terminal
 interface, under `--tui`, with the table filling in live, sorting, filtering, search, a
@@ -33,7 +35,7 @@ DNSCrypt public-resolvers list,
 `~/.config/dnsbench/providers.toml` overrides both, and `--near` keeps a run to the fastest
 subset instead of every listed resolver.
 
-**Not built yet.** The `history` subcommand. The regional domain sets, so the detected region
+**Not built yet.** The regional domain sets, so the detected region
 travels in the output and does not yet change which names are queried. The pinned Tranco
 domain set, for which eight names stand in under the honest label
 `builtin:top8`. DoH is HTTP/1.1 only, because V's stdlib has no HTTP/2 client, and every DoH
@@ -171,6 +173,24 @@ copy of the same key. `--near` runs a TCP connect against every candidate, paced
 the measurement plan is, and keeps the fastest 25 for the full battery instead of every listed
 resolver; a candidate with nothing to dial is kept unconditionally, and `--only` bypasses the
 pre-pass entirely since it is already an explicit, short list.
+
+### History
+
+```sh
+dnsbench --history "$XDG_DATA_HOME/dnsbench/runs.jsonl" --format json   # append one run
+dnsbench history --last 30d                                            # read it back
+dnsbench history --last 30d --asn AS27699
+dnsbench history --provider nextdns --plot
+```
+
+`--history <path>` on a normal run is where a result gets appended; `dnsbench history` is where
+it gets read back. With no `--file`, it reads `$XDG_DATA_HOME/dnsbench/runs.jsonl`, the same
+default location `--history` has no reason to point anywhere else. Without `--plot`, it prints
+one row per network and provider: how many runs, the mean/min/max p50, and the latest score.
+`--plot` needs `--provider`, since a sparkline is one series and a provider can appear on more
+than one network. A network, cold mode, domain set or probe is never averaged in with another;
+`network.asn` and `network.ifname` are why a fibre run and a mobile run on the same machine
+never get mixed into one meaningless number.
 
 ### Exit codes
 

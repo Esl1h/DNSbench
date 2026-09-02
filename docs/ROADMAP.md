@@ -69,7 +69,7 @@ piece, not part of this milestone's line.
 ### M5 — Beyond
 
 - [ ] Region-aware domain sets and RIR table generation at release
-- [ ] `history` aggregation and sparklines
+- [x] `history` aggregation and sparklines
 - [x] `--catalog dnscrypt`: the `sdns://` parser, three-layer precedence merge,
       `--require`, `--near` reachability prefilter
 - [x] DNS interception / hijack detection as a first-class check
