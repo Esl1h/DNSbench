@@ -1,4 +1,4 @@
-.TH DNSBENCH 1 "2026-08-29" "dnsbench 0.1.0" "User Commands"
+.TH DNSBENCH 1 "2026-09-02" "dnsbench 0.1.0" "User Commands"
 .SH NAME
 dnsbench \- rank DNS resolvers from your own connection, including CDN edge quality
 .SH SYNOPSIS
@@ -6,6 +6,9 @@ dnsbench \- rank DNS resolvers from your own connection, including CDN edge qual
 .RI [ options ]
 .br
 .B dnsbench update
+.br
+.B dnsbench history
+.RI [ options ]
 .SH DESCRIPTION
 .B dnsbench
 measures and ranks DNS resolvers from the link it is run on, over UDP, TCP,
@@ -44,7 +47,35 @@ JSON.
 .TP
 .BI \-\-only " keys"
 Comma\-separated catalog keys, or addresses of the machine's own resolvers.
-Only these are measured.
+Only these are measured. Bypasses
+.BR \-\-near ,
+since it is already an explicit, short list.
+.TP
+.BI \-\-catalog " name"
+.B embedded
+or
+.BR dnscrypt .
+Default
+.BR embedded .
+.B dnscrypt
+opts into the cached DNSCrypt public\-resolvers list; see
+.B UPDATE
+below. A provider key already curated in the embedded catalog is never
+replaced by the DNSCrypt list's copy of the same key.
+.TP
+.BI \-\-require " tags"
+Comma\-separated tags every measured provider must carry, from the tag
+vocabulary in
+.IR docs/DATA.md .
+Applied after the catalogs are merged.
+.TP
+.B \-\-near
+Reachability pre\-pass for
+.BR "\-\-catalog dnscrypt" :
+a TCP connect against every candidate that has an address to dial, paced the
+same way the measurement plan is, keeping the fastest 25 for the full
+battery instead of every listed resolver. A candidate with nothing to dial
+is kept unconditionally.
 .TP
 .BI \-\-rounds " n"
 Measured rounds per provider. Default 5. A round is one pass over the domain
@@ -107,6 +138,38 @@ every number would describe the tunnel rather than the link.
 .BI \-\-seed " n"
 Fix the shuffle, for a reproducible plan.
 .TP
+.BI \-\-watch " duration"
+Repeat the run at a fixed interval instead of running once, printing and, with
+.BR \-\-history ,
+appending each measurement. A duration is a positive integer followed by
+.BR s ,
+.BR m ,
+.BR h ,
+.B d
+or
+.BR w ,
+for example
+.IR 15m .
+A tick that fails does not stop the loop. Alerts when the winning provider
+changes, and, with
+.BR \-\-alert\-edge ,
+when a provider's edge penalty crosses that threshold; both go to standard
+error. Refused together with
+.BR \-\-tui .
+.TP
+.BI \-\-watch\-count " n"
+Stop
+.B \-\-watch
+after
+.I n
+measurements. Without it the loop runs until interrupted.
+.TP
+.BI \-\-alert\-edge " ms"
+With
+.BR \-\-watch ,
+alert when any provider's median edge penalty exceeds this many milliseconds.
+Off by default.
+.TP
 .BR \-V ", " \-\-version
 Print the version and the commit it was built from.
 .TP
@@ -129,7 +192,55 @@ The list is
 used by default and never becomes the default. Its own header warns that it
 includes servers which censor, which do not validate DNSSEC, and which collect
 and monetise queries, so ranking them all by latency and crowning a winner would
-be irresponsible. Nothing reads the cache yet; opting in is a later release.
+be irresponsible. Opt in explicitly with
+.BR "\-\-catalog dnscrypt" ,
+optionally narrowed with
+.B \-\-require
+or pre\-filtered for reachability with
+.BR \-\-near .
+Only DoH stamps in the list become providers; a DNSCrypt\-protocol entry names
+an address no transport in this tool speaks.
+.SH HISTORY
+.PP
+.B dnsbench history
+.RI [ options ]
+reads a JSONL history file back and either prints an aggregated table or, with
+.BR \-\-plot ,
+a sparkline.
+.TP
+.BI \-\-last " duration"
+Only runs within this window before now: a positive integer followed by
+.BR s ,
+.BR m ,
+.BR h ,
+.B d
+or
+.BR w .
+.TP
+.BI \-\-asn " asn"
+Only this network, for example
+.IR AS27699 .
+.TP
+.BI \-\-provider " key"
+Only this provider.
+.TP
+.B \-\-plot
+Sparkline of p50 over time instead of the aggregated table. Requires
+.BR \-\-provider :
+a sparkline is one series, and a provider can appear on more than one
+network.
+.TP
+.BI \-\-file " path"
+History file to read. Default
+.IR $XDG_DATA_HOME/dnsbench/runs.jsonl .
+.PP
+Without
+.BR \-\-plot ,
+the default view is one row per network and provider: how many runs, the
+mean/min/max p50, and the latest score. A network, cold mode, domain set or
+probe is never averaged in with another; the network fingerprint on every
+line is why a fibre run and a mobile run on the same machine are never mixed
+into one meaningless number.
 .SH PROBES
 .TP
 .B warm
@@ -207,19 +318,41 @@ Where
 .B dnsbench update
 writes. Defaults to
 .IR ~/.cache .
+.TP
+.B XDG_CONFIG_HOME
+Where the user provider override file is read from. Defaults to
+.IR ~/.config .
+.TP
+.B XDG_DATA_HOME
+Where
+.B dnsbench history
+reads from by default, and the conventional
+.B \-\-history
+target. Defaults to
+.IR ~/.local/share .
 .SH FILES
 .TP
 .I ~/.local/share/dnsbench/runs.jsonl
 Conventional location for the history file. Nothing is written there unless
 .B \-\-history
-names it.
+names it; read by
+.B dnsbench history
+unless
+.B \-\-file
+says otherwise.
 .TP
 .I $XDG_CACHE_HOME/dnsbench/public-resolvers.md
 The verified DNSCrypt catalog and its signature, written by
-.BR "dnsbench update" .
+.B "dnsbench update"
+and read by
+.BR "\-\-catalog dnscrypt" .
 Falls back to
 .I ~/.cache
 when the variable is unset.
+.TP
+.I ~/.config/dnsbench/providers.toml
+User provider overrides, same schema as the embedded catalog, merged in by
+key ahead of both the embedded and the DNSCrypt catalogs.
 .SH EXAMPLES
 .PP
 Rank every provider in the catalog over UDP:
@@ -247,15 +380,45 @@ dnsbench \-\-no\-geo \-\-format json \\
          \-\-history ~/.local/share/dnsbench/runs.jsonl
 .EE
 .RE
+.PP
+Opt into the DNSCrypt catalog, pre\-filtered for reachability:
+.PP
+.RS
+.EX
+dnsbench update
+dnsbench \-\-catalog dnscrypt \-\-near
+.EE
+.RE
+.PP
+Watch a resolver every 15 minutes and alert on a bad edge penalty:
+.PP
+.RS
+.EX
+dnsbench \-\-watch 15m \-\-alert\-edge 50 \-\-only quad9 \-\-probes warm,ecs \\
+         \-\-history ~/.local/share/dnsbench/runs.jsonl
+.EE
+.RE
+.PP
+Read that history back as a sparkline:
+.PP
+.RS
+.EX
+dnsbench history \-\-provider quad9 \-\-plot
+.EE
+.RE
 .SH NOTES
 .B dnsbench
 does not change your DNS settings, does not phone home, and carries no
-telemetry. Besides the measurement it makes three DNS queries at startup to
-name the network it is on, which
+telemetry. Besides the measurement it makes four DNS queries at startup to
+name the network it is on and to check for transparent DNS interception,
+which
 .B \-\-no\-geo
 removes. The public address those queries establish is used to look up the ASN
 and is then discarded: the output carries the ASN and the operator's name and
-never the address, so a result is safe to paste into a bug report.
+never the address, so a result is safe to paste into a bug report. A mismatch
+between the two independent address queries sets
+.B dns_interception
+in the output and is reported prominently, without stopping the run.
 .SH SEE ALSO
 .BR kdig (1),
 .BR dig (1),
