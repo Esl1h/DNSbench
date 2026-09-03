@@ -162,14 +162,12 @@ single reading is a coin flip, so it reports unknown rather than guessing.
 NXDOMAIN even on resolvers that filter nothing, and the OpenDNS test domains resolve to the
 same block page from every resolver.
 
-### Outstanding, smaller than a phase
+### Done: the cold-probe zone
 
-- **`dnsbench history`.** `store/jsonl.v` writes the file and the comparability rule is tested,
-  but no subcommand reads it back and aggregates.
-- **The cold-probe zone.** Live. `probe.dnsbench.esli.blog` is delegated to Bunny DNS, signed
-  with algorithm 13, and answers a fresh random label with `192.0.2.1` at a TTL of 60. `delv`
-  validates it from the root. Pointing `--cold-zone` at your own zone is still supported; DATA
-  § Setting the zone up has the records and the verification commands.
+Live. `probe.dnsbench.esli.blog` is delegated to Bunny DNS, signed with algorithm 13, and
+answers a fresh random label with `192.0.2.1` at a TTL of 60. `delv` validates it from the root.
+Pointing `--cold-zone` at your own zone is still supported; DATA § Setting the zone up has the
+records and the verification commands.
 
 ### What the TUI cost, and what it changed underneath
 
