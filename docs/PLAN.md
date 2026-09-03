@@ -429,6 +429,44 @@ after `measure_capabilities` rather than during `load_catalog`'s pre-run tag fil
 early, before anything is measured, if `filter` was not requested. A run left with no provider
 after the filter is an error rather than an empty table.
 
+### Done: the doh h2 fallback
+
+`docs/ROADMAP.md` decision 3 left this "libcurl later." Later is now, opt-in: `-d doh_h2` builds
+`core/doh_h2_d_doh_h2.v`, `core/doh_h2_stub_notd_doh_h2.v`'s stub compiling in on every other
+build, V's `_d_<flag>.v` / `_notd_<flag>.v` filename convention picking exactly one per build so
+`cmd/cli.v` never has to ask which. `make check` and `make release` never pass the flag, so the
+published binary, static and dependency-free, is unaffected; `make build CURL=1` is how a
+developer with `libcurl-devel` opts in. The default build was verified clean, `make check`
+against the pinned compiler, both before and after this landed.
+
+`core/doh_h2_d_doh_h2.v`'s FFI is hand-declared against the installed `<curl/curl.h>`, not
+guessed: `curl_easy_setopt`'s third, variadic parameter is declared `voidptr`, every call site
+casting a long option's value through `voidptr(usize(n))`, which works because the x86_64 System
+V ABI passes that argument in the same register regardless of what `va_arg` type curl reads it
+as, the same trick every non-C curl binding uses. `CURLOPT_RESOLVE` pins the connection to the
+IP literal the plan gives, without a hostname lookup mid-measurement, while the URL keeps the
+hostname for SNI and the `Host` curl sends. Verified live against Quad9 (`dns.quad9.net`,
+`9.9.9.9`) and Mullvad (`dns.mullvad.net`, `194.242.2.2`) directly before wiring anything into
+`cmd/cli.v`: real DNS answers, a second query on the same handle measurably faster than the
+first, confirming curl keeps the h2 session open the way `core/doh.v`'s own `DohTransport` keeps
+its h1.1 connection open.
+
+`doh_query` tries h1.1 first, as it always did; only a `505` retries over
+`core/doh_h2_d_doh_h2.v`, never a generic failure. That is narrower than it could be, and the
+narrowing is deliberate, not an oversight: Quad9's `505` is unambiguous, docs/ARCHITECTURE.md's
+own words for it, "answers `505` to every request." Mullvad's is not: it drops the connection
+before a status line arrives, `"connection closed inside the HTTP head"`, already the exact
+behaviour `docs/ARCHITECTURE.md` documented before this session touched anything. Retrying on
+*any* h1.1 failure was implemented and tried first, live, and it made `--only mullvad --probes
+doh` take over two minutes for sixteen steps that should take a few seconds: every failure now
+paid for two connection attempts instead of one, into an endpoint that answers a connection
+storm by getting slower, not faster. That is a real risk of hammering a production resolver, not
+a bug to route around, so the fallback was narrowed back to the one signal that is unambiguous,
+verified against the same live endpoint at every step rather than assumed to be safe. Mullvad
+stays a documented gap. The infrastructure, `DohH2Transport`, `doh2_query`, the per-subject
+`http_version` tracking, does not care which condition triggers it and needs no further changes
+if a safer way to recover Mullvad specifically is found later.
+
 ## Phases
 
 ### Phase 0: foundation, no V code

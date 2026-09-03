@@ -47,11 +47,9 @@ finished tool, not the current binary.
 - The pinned Tranco domain set, `global.txt`'s real top 25 embedded from a citable snapshot id,
   plus regional sets for six ccTLD groupings that merge in automatically once a region is
   detected
-
-**Not built yet:**
-
-- DoH over HTTP/2. V's stdlib has no h2 client, so every DoH result is HTTP/1.1 and says so;
-  two providers that serve DoH over h2 alone are recorded as refusing rather than as unreachable
+- DoH over HTTP/2, opt-in: build with `make build CURL=1` (needs `libcurl-devel` or equivalent)
+  and Quad9, which answers HTTP/1.1 with a 505, measures cleanly instead of showing as refused.
+  The default build stays h1.1-only and dependency-free; V's stdlib has no h2 client of its own
 
 `docs/PLAN.md` has the state of every module and what each remaining phase involves.
 `docs/ROADMAP.md` has the milestones.
@@ -90,6 +88,9 @@ project exists rather than a patch to one of the others.
 # from source (V >= 0.5.2)
 git clone https://github.com/Esl1h/DNSbench && cd DNSbench
 make build
+
+# optionally, DoH over HTTP/2 for Quad9 (needs libcurl-devel or equivalent)
+make build CURL=1
 
 # and, optionally, the man page and shell completions
 sudo make install PREFIX=/usr/local

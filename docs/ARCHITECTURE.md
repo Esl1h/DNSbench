@@ -143,8 +143,9 @@ protocol in `probe.v`.
 | UDP/53 | ✅ | `net.dial_udp` |
 | TCP/53 | ✅ | `net.dial_tcp`, 2-byte length prefix |
 | DoT (853) | ✅ | `net.ssl.new_ssl_conn` + RFC 7858 framing |
-| DoH (HTTP/1.1) | ⚠️ | Hand-written request over `net.ssl`; every result carries `http_version: "1.1"` |
-| DoH (HTTP/2, /3) | ❌ | No h2/h3 client in V stdlib. Needs libcurl binding |
+| DoH (HTTP/1.1) | ✅ | Hand-written request over `net.ssl`; every result carries `http_version: "1.1"` |
+| DoH (HTTP/2) | ⚠️ opt-in | `core/doh_h2_d_doh_h2.v`, libcurl, built only with `-d doh_h2`; see below |
+| DoH (HTTP/3) | ❌ | No h3 client in V stdlib or plan to add one |
 | DoQ | ❌ | No QUIC in V. Out of scope until one exists |
 
 **This is documented, not hidden.** The output labels DoH results with the HTTP version used,
@@ -153,8 +154,22 @@ because comparing an h1.1 measurement against a browser's real h2 behaviour is m
 The limitation is not only cosmetic: some endpoints refuse HTTP/1.1 outright. Quad9 answers
 `505 HTTP Version Not Supported` to every request, and Mullvad closes the connection without a
 status. Both were confirmed with `curl --http1.1` against `curl --http2` on the same endpoint.
-Those providers cannot be measured over DoH by this tool, and the run says so: the 505 is
-recorded as `refused` with a warning naming the status, and never as loss.
+
+**The default build cannot measure Quad9 or Mullvad over DoH**, and the run says so: the 505 is
+recorded as `refused` with a warning naming the status, never as loss, and a connection Mullvad
+simply drops surfaces as the plain query failure it is.
+
+**`-d doh_h2` recovers Quad9.** `core/doh_h2_d_doh_h2.v` binds libcurl's easy interface (`#pkgconfig
+libcurl`, so it needs `libcurl-devel` or equivalent at build time, nothing at runtime beyond the
+shared library) and forces HTTP/2 with `CURLOPT_HTTP_VERSION`. `doh_query` in `cmd/cli.v` tries
+h1.1 first, as every other build does; only a `505` specifically retries over this transport,
+never a generic connection failure, because a 505 is Quad9 answering unambiguously and a dropped
+connection, Mullvad's shape, is not distinguishable from an unrelated network problem without one.
+Quad9 measures cleanly this way, verified live; Mullvad is not recovered by this and stays a
+documented gap, not a bug — see `docs/PLAN.md` § the doh h2 fallback for why retrying on any
+failure was tried and reverted. `core/doh_h2_stub_notd_doh_h2.v` is what compiles in without the
+flag: the same public API, `open()` always refusing, so `cmd/cli.v` never has to know which build
+it is. Without `-d doh_h2`, `dnsbench` links nothing beyond what the default build always has.
 
 `net.http` is not used, despite being the obvious choice. It resolves the URL's hostname
 itself, which would put a lookup inside every latency sample and route that lookup through a

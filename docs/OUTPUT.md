@@ -112,11 +112,14 @@ Three formats, one guarantee: **anything that consumes `--json` will keep workin
 - `dnssec_validating` is `null` when the probe did not run, and also when it ran and could not
   decide. A resolver whose anycast fleet answers inconsistently produces no verdict rather than
   a coin flip.
-- `http_version` appears on DoH results only, and is always `"1.1"`. V's stdlib has no h2
-  client, so the figure is not comparable with a browser's real h2 behaviour and the output
-  says which one it is. Some endpoints, Quad9's among them, answer HTTP 505 to every HTTP/1.1
-  request because they serve DoH over h2 only; that is recorded as `refused` with a warning
-  naming the status, never as loss.
+- `http_version` appears on DoH results only. `"1.1"` in the default build, always: V's stdlib
+  has no h2 client, so the figure is not comparable with a browser's real h2 behaviour and the
+  output says which one it is. A build made with `-d doh_h2` (`docs/ARCHITECTURE.md` § Transport
+  support matrix) links libcurl and reports `"2"` wherever that path actually answered; nothing
+  else in the output changes shape. Some endpoints, Quad9's among them, answer HTTP 505 to every
+  HTTP/1.1 request because they serve DoH over h2 only; the default build records that as
+  `refused` with a warning naming the status, never as loss, and `-d doh_h2` recovers a real
+  measurement from it instead.
 - `refused` counts attempts the resolver answered with a non-NOERROR rcode. They produce no
   latency, so they never reach `n`, and they are not `loss`, which counts only attempts
   that drew no answer at all. A provider can therefore show `loss` of 0.0 and still be

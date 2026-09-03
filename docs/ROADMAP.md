@@ -85,7 +85,7 @@ piece, not part of this milestone's line.
 |---|---|---|---|
 | 1 | Project name | `dnsbench` collides with GRC's product | **Decided: keep `dnsbench`** |
 | 2 | Cold-probe zone | Project-operated vs. user-supplied only | **Decided: operate `probe.dnsbench.esli.blog`**, configurable |
-| 3 | DoH HTTP/2 | libcurl binding vs. stay on h1.1 and label it | Label it for v1; libcurl later |
+| 3 | DoH HTTP/2 | libcurl binding vs. stay on h1.1 and label it | **Decided: both.** `-d doh_h2` opt-in build links libcurl; the default build stays h1.1-only and dependency-free. See ARCHITECTURE § Transport support matrix |
 | 4 | DoQ | Out of scope until V has QUIC | Out of scope, documented |
 | 5 | Privacy weight in `balanced` | Include declared claims at all? | Keep at 0.05, styled distinctly |
 | 6 | Windows / macOS | Linux-only for v1 | Linux-only; core is portable, `netinfo` is not |

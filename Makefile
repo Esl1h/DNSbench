@@ -23,6 +23,14 @@ TARGET  := linux-amd64
 STATIC  ?=
 LINKAGE := $(if $(STATIC),-cc musl-gcc -cflags -static -gc none,)
 
+# core/doh_h2_d_doh_h2.v, DoH over HTTP/2 through libcurl for the two
+# providers that refuse HTTP/1.1 outright, is opt-in: CURL=1 adds -d doh_h2.
+# Without it, core/doh_h2_stub_notd_doh_h2.v's stub is what's compiled in,
+# and the binary keeps the zero-runtime-dependency guarantee unconditionally.
+# Release builds do not set this, so the published binary never links curl.
+CURL    ?=
+DFLAGS  := $(if $(CURL),-d doh_h2,)
+
 PREFIX  ?= /usr/local
 BINDIR  ?= $(PREFIX)/bin
 MANDIR  ?= $(PREFIX)/share/man/man1
@@ -33,16 +41,16 @@ DATADIR ?= $(PREFIX)/share
 all: build
 
 build:
-	v $(VFLAGS) $(LINKAGE) $(STAMP) -o $(BIN) $(SRC)
+	v $(VFLAGS) $(LINKAGE) $(DFLAGS) $(STAMP) -o $(BIN) $(SRC)
 
 dev:
-	v -g $(STAMP) -o $(BIN) $(SRC)
+	v -g $(DFLAGS) $(STAMP) -o $(BIN) $(SRC)
 
 run: dev
 	./$(BIN)
 
 test:
-	v test .
+	v $(DFLAGS) test .
 
 fmt:
 	v fmt -w .
@@ -79,7 +87,7 @@ release: check
 	@git diff --quiet HEAD || { echo "working tree is dirty: commit or stash first"; exit 1; }
 	rm -rf $(DIST)/stage
 	mkdir -p $(DIST)/stage/$(BIN)-$(VERSION)-$(TARGET)/completions
-	v $(VFLAGS) $(LINKAGE) $(STAMP) -o $(DIST)/stage/$(BIN)-$(VERSION)-$(TARGET)/$(BIN) $(SRC)
+	v $(VFLAGS) $(LINKAGE) $(DFLAGS) $(STAMP) -o $(DIST)/stage/$(BIN)-$(VERSION)-$(TARGET)/$(BIN) $(SRC)
 	strip $(DIST)/stage/$(BIN)-$(VERSION)-$(TARGET)/$(BIN)
 	cp packaging/dnsbench.1 $(DIST)/stage/$(BIN)-$(VERSION)-$(TARGET)/
 	cp packaging/completions/* $(DIST)/stage/$(BIN)-$(VERSION)-$(TARGET)/completions/

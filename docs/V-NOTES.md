@@ -566,3 +566,50 @@ digest.checksum() // 64 octets
 `generate_key() !(PublicKey, PrivateKey)`, `sign(private, message) ![]u8` and
 `verify(public, message, sig) !bool`, with `public_key_size`, `signature_size`
 and friends as constants.
+
+## Binding a C library V has no vlib wrapper for: libcurl, for core/doh_h2_d_doh_h2.v
+
+`$if $pkgconfig('libcurl') { #pkgconfig libcurl } $else { #flag -lcurl }` plus
+`#include <curl/curl.h>` is the same pattern `vlib/db/sqlite/sqlite.c.v` uses;
+`fn C.curl_easy_init() voidptr` and its siblings need no header-matching
+struct, only a name and a signature the linker can resolve.
+
+A C enum or macro constant from the included header does not need a V-side
+redeclaration. `C.CURLOPT_URL`, `C.CURL_HTTP_VERSION_2_0`,
+`C.CURLINFO_RESPONSE_CODE` and the rest of curl's option and info enums are
+referenced directly; V emits the bare name into the generated C and the real
+header resolves it at C-compile time, the same reasoning `os/signal.c.v`'s
+use of `C.SIG_ERR` and `C.EINVAL` already relies on.
+
+`curl_easy_setopt(CURL*, CURLoption, ...)` is C-variadic, which V has no
+syntax to declare. Declaring the third parameter `voidptr` and casting every
+call site works: `voidptr(usize(1))` for a long-valued option,
+`voidptr(some_string.str)` for a string one. This holds on the x86_64 System
+V ABI because the variadic argument lands in the same register slot
+regardless of the type curl's own `va_arg` reads it back as; it is the same
+trick every non-C curl binding uses, not something specific to V.
+
+A V function can be handed to a C library expecting a plain C function
+pointer, no wrapper needed, verified for `CURLOPT_WRITEFUNCTION` and already
+relied on by `os/signal.c.v` passing a `SignalHandler` straight into
+`signal()`.
+
+Verified against a live h2-only endpoint (Quad9, `dns.quad9.net`) before any
+of this reached `cmd/cli.v`: `curl_easy_init`, the option chain above,
+`curl_easy_perform`, `curl_easy_getinfo` for the status, and a
+`CURLOPT_WRITEFUNCTION` callback accumulating into a V `&[]u8` all worked on
+the first attempt that compiled. A second `curl_easy_perform` on the same
+handle measured faster than the first, confirming curl keeps the connection,
+including the h2 session, open across calls rather than reopening it.
+
+## A file compiles conditionally on `-d <flag>` by its name alone
+
+`xxx_d_flagname.v` compiles only when the build passes `-d flagname`;
+`xxx_notd_flagname.v` compiles only when it does not. Exactly one half of
+such a pair is ever in the build, which is what lets
+`core/doh_h2_d_doh_h2.v` (the real libcurl binding) and
+`core/doh_h2_stub_notd_doh_h2.v` (an always-fails stub with the identical
+public API) coexist without a single `$if` in the callers. `$if flagname ?
+{}` (the `?` distinguishes a custom `-d` define from a built-in condition
+like `$if linux {}`) does the same thing inline, verified separately, but
+the file-suffix form needed no wrapping of existing top-level declarations.

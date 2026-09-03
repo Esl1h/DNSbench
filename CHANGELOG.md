@@ -9,6 +9,15 @@ comparability and `history` must be able to detect it.
 
 ## [Unreleased]
 
+### Added
+- `-d doh_h2` opt-in build: DoH over HTTP/2 through libcurl (`libcurl-devel` or equivalent needed
+  at build time, nothing beyond the shared library at runtime), `make build CURL=1`. Quad9
+  answers HTTP/1.1 with a 505 to every request; the `doh` probe now recovers a real measurement
+  from it instead of recording a refusal. The default build is unaffected: no new dependency,
+  `core/doh_h2_stub_notd_doh_h2.v`'s stub compiles in instead and `http_version` stays `"1.1"`.
+  Mullvad, which drops the connection rather than answering with a status, is a documented gap
+  rather than something this recovers; see `docs/PLAN.md` § the doh h2 fallback
+
 ## [0.1.0] - 2026-09-02
 
 ### Added

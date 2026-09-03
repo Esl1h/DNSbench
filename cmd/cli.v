@@ -827,6 +827,10 @@ mut:
 	// doh_status is the first HTTP status a DoH endpoint answered with that was
 	// not 200, kept so the report can say why rather than only that.
 	doh_status int
+	// doh_version is which HTTP version the run's doh samples actually came
+	// over. Starts at core.doh_http_version and is overwritten only once an
+	// h1.1 attempt draws a 505 and the core.DohH2Transport fallback succeeds.
+	doh_version string = core.doh_http_version
 	// Attempts the resolver answered with a non-NOERROR rcode, held apart from
 	// `failed`: one is a resolver declining, the other is nothing coming back.
 	refused map[string]int
@@ -984,8 +988,15 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 		if s.doh_status == 0 {
 			continue
 		}
+		// A 505 that the core/doh_h2_d_doh_h2.v fallback turned into a real measurement
+		// is not something to warn about: doh_version says so, and the sample
+		// it produced is in the results like any other.
+		if s.doh_status == 505 && s.doh_version == core.doh2_http_version {
+			continue
+		}
 		// Naming the status matters. 505 is not a broken endpoint, it is one
-		// that serves DoH over HTTP/2 only, which V's stdlib cannot speak.
+		// that serves DoH over HTTP/2 only, and the h2 fallback did not
+		// recover this one either.
 		suffix := if s.doh_status == 505 { ', it serves DoH over HTTP/2 only' } else { '' }
 		warnings << store.Warning{
 			level: 'warn'
@@ -1471,6 +1482,9 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 	// it. dot_fresh opens its own and closes it again per query.
 	mut dot := map[string]&core.DotTransport{}
 	mut doh := map[string]&core.DohTransport{}
+	// Opened lazily, only for a provider whose doh step draws a 505: most
+	// providers never touch this map at all. core/doh_h2_d_doh_h2.v.
+	mut doh2 := map[string]&core.DohH2Transport{}
 
 	// Paying every provider's handshake up front, concurrently, rather than on
 	// the plan's own first tcp/dot_warm/doh step for that provider: the plan
@@ -1494,6 +1508,9 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 			t.close()
 		}
 		for _, mut t in doh {
+			t.close()
+		}
+		for _, mut t in doh2 {
 			t.close()
 		}
 	}
@@ -1534,7 +1551,7 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 			subjects[idx].attempts[step.probe]++
 		}
 
-		out := query_once(step, target, subjects[idx], opts, ca_bundle, mut udp, mut tcp, mut dot, mut doh) or {
+		out := query_once(step, target, subjects[idx], opts, ca_bundle, mut udp, mut tcp, mut dot, mut doh, mut doh2) or {
 			if !step.discard {
 				subjects[idx].failed[step.probe]++
 			}
@@ -1546,6 +1563,9 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 		// that one too. The reason would otherwise never reach the report.
 		if out.http_status != 0 {
 			subjects[idx].doh_status = out.http_status
+		}
+		if out.http_version != '' {
+			subjects[idx].doh_version = out.http_version
 		}
 
 		// The warm-up query is sent like any other and its result thrown away:
@@ -1725,16 +1745,19 @@ struct Outcome {
 	// http_status is the status behind that refusal, so the report can say why
 	// and not only that. Zero for every probe that is not DoH.
 	http_status int
+	// http_version is set only when a doh sample actually travelled over the
+	// core.DohH2Transport fallback; empty otherwise, meaning the h1.1 default.
+	http_version string
 }
 
-fn query_once(step core.Step, target core.Target, subject Subject, opts Options, ca_bundle string, mut udp map[string]&core.UdpTransport, mut tcp map[string]&core.TcpTransport, mut dot map[string]&core.DotTransport, mut doh map[string]&core.DohTransport) !Outcome {
+fn query_once(step core.Step, target core.Target, subject Subject, opts Options, ca_bundle string, mut udp map[string]&core.UdpTransport, mut tcp map[string]&core.TcpTransport, mut dot map[string]&core.DotTransport, mut doh map[string]&core.DohTransport, mut doh2 map[string]&core.DohH2Transport) !Outcome {
 	msg := core.build_query(query_name(step, opts.cold_zone), core.qtype_a)!
 
 	if step.probe in dot_probes {
 		return dot_query(step, subject, ca_bundle, msg, mut dot)
 	}
 	if step.probe == 'doh' {
-		return doh_query(step, subject, ca_bundle, msg, mut doh)
+		return doh_query(step, subject, ca_bundle, msg, mut doh, mut doh2)
 	}
 
 	if step.probe == 'tcp' {
@@ -1850,7 +1873,7 @@ fn dot_query(step core.Step, subject Subject, ca_bundle string, msg []u8, mut do
 // would use it and re-handshaking per query would measure the handshake. Unlike
 // dot_warm there is no fresh variant: the handshake cost is already published by
 // dot_fresh and would be the same two round trips here.
-fn doh_query(step core.Step, subject Subject, ca_bundle string, msg []u8, mut doh map[string]&core.DohTransport) !Outcome {
+fn doh_query(step core.Step, subject Subject, ca_bundle string, msg []u8, mut doh map[string]&core.DohTransport, mut doh2 map[string]&core.DohH2Transport) !Outcome {
 	if subject.doh_ip == '' || subject.doh_host == '' {
 		return error('no DoH endpoint for ${subject.key}')
 	}
@@ -1860,40 +1883,95 @@ fn doh_query(step core.Step, subject Subject, ca_bundle string, msg []u8, mut do
 		timeout: dot_timeout
 	}
 
-	if step.provider_key !in doh {
-		mut t := &core.DohTransport{
-			hostname: subject.doh_host
-			path: subject.doh_path
-			ca_bundle: ca_bundle
-		}
-		t.open(target)!
-		doh[step.provider_key] = t
-	}
-	mut t := doh[step.provider_key] or { return error('no doh transport') }
-
-	if reply, ms := t.query(msg) {
-		return Outcome{
-			ms: ms
-			code: core.rcode(reply)
-		}
-	} else {
-		// An HTTP status is an answer, not a silence. Quad9's endpoint replies
-		// 505 to every HTTP/1.1 request because it serves DoH over h2 only, and
-		// V's stdlib has no h2 client; recording that as loss would blame the
-		// network for a documented limitation of this tool.
-		// Drop the connection either way. An endpoint that answered a status
-		// this client cannot use is free to close afterwards, and reusing a
-		// socket in that state turns one refusal into a run of read errors.
-		t.close()
-		doh.delete(step.provider_key)
-
+	// core/doh_h2_d_doh_h2.v exists for exactly this: an explicit,
+	// unambiguous "I will not speak HTTP/1.1 DoH" the way
+	// Quad9 gives one. A generic connection failure, Mullvad's
+	// shape as verified against the live endpoint, is not
+	// handled the same way: without a clean signal that the
+	// endpoint itself refused the version rather than the
+	// network dropping a packet, retrying over a second
+	// transport risks compounding a real problem into two
+	// connection attempts instead of diagnosing one.
+	return doh1_query(step, target, subject, ca_bundle, msg, mut doh) or {
 		if status := core.http_status_of(err.msg()) {
+			if status == 505 {
+				if outcome2 := doh2_query(subject, ca_bundle, msg, mut doh2) {
+					return outcome2
+				}
+			}
 			return Outcome{
 				refused: true
 				http_status: status
 			}
 		}
 		return err
+	}
+}
+
+// doh1_query is the HTTP/1.1 half of the doh probe: open the connection if
+// this is the first step to need it, and read one reply. Either failure
+// closes and forgets the connection, so whatever tries next, this probe
+// again or core/doh_h2_d_doh_h2.v's fallback, starts from nothing rather than a
+// socket left in a state neither call left it in on purpose.
+fn doh1_query(step core.Step, target core.Target, subject Subject, ca_bundle string, msg []u8, mut doh map[string]&core.DohTransport) !Outcome {
+	if step.provider_key !in doh {
+		mut t := &core.DohTransport{
+			hostname: subject.doh_host
+			path: subject.doh_path
+			ca_bundle: ca_bundle
+		}
+		t.open(target) or {
+			doh.delete(step.provider_key)
+			return err
+		}
+		doh[step.provider_key] = t
+	}
+	mut t := doh[step.provider_key] or { return error('no doh transport') }
+
+	// An endpoint that answered a status this client cannot use is free to
+	// close afterwards, and reusing a socket in that state turns one
+	// refusal into a run of read errors.
+	reply, ms := t.query(msg) or {
+		t.close()
+		doh.delete(step.provider_key)
+		return err
+	}
+	return Outcome{
+		ms: ms
+		code: core.rcode(reply)
+	}
+}
+
+// doh2_query is doh_query's h2 fallback, lazily opened and held the same way:
+// a query() failure closes and forgets the transport, so the next step tries
+// a fresh handle rather than reusing one libcurl has already given up on.
+fn doh2_query(subject Subject, ca_bundle string, msg []u8, mut doh2 map[string]&core.DohH2Transport) !Outcome {
+	target := core.Target{
+		ip: subject.doh_ip
+		port: doh_port
+		timeout: dot_timeout
+	}
+
+	if subject.key !in doh2 {
+		mut t := &core.DohH2Transport{
+			hostname: subject.doh_host
+			path: subject.doh_path
+			ca_bundle: ca_bundle
+		}
+		t.open(target)!
+		doh2[subject.key] = t
+	}
+	mut t := doh2[subject.key] or { return error('no doh2 transport') }
+
+	reply, ms := t.query(msg) or {
+		t.close()
+		doh2.delete(subject.key)
+		return err
+	}
+	return Outcome{
+		ms: ms
+		code: core.rcode(reply)
+		http_version: core.doh2_http_version
 	}
 }
 
@@ -1951,7 +2029,7 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities m
 				// Recorded on every DoH result, because an HTTP/1.1 measurement
 				// is not comparable with a browser's real h2 behaviour and a
 				// reader has no way to know which one this was.
-				http_version: if name == 'doh' { core.doh_http_version } else { '' }
+				http_version: if name == 'doh' { subject.doh_version } else { '' }
 			}
 		}
 
