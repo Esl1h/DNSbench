@@ -14,8 +14,14 @@ TARGET  := linux-amd64
 
 # Static linking is opt-in because it needs a static libc that a development
 # machine has no reason to install. Release builds set STATIC=1.
+#
+# -gc none goes with it: V's default Boehm GC needs getcontext for stack
+# scanning, and Ubuntu's musl-tools does not provide it for static linking,
+# so a static build fails at the link step rather than the compile step.
+# Dropping the GC is safe here specifically because dnsbench is a short-lived
+# CLI process; the operating system reclaims everything at exit regardless.
 STATIC  ?=
-LINKAGE := $(if $(STATIC),-cc musl-gcc -cflags -static,)
+LINKAGE := $(if $(STATIC),-cc musl-gcc -cflags -static -gc none,)
 
 PREFIX  ?= /usr/local
 BINDIR  ?= $(PREFIX)/bin
