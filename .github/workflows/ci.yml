@@ -4,6 +4,13 @@ on:
   push:
   pull_request:
 
+env:
+  # Pinned for the same reason .github/workflows/release.yml pins it: V is
+  # not API-stable, and an unpinned checkout means this workflow tests
+  # whatever vlang/v's master happens to be on the day it runs rather than
+  # the compiler docs/RELEASING.md's reproducibility section is about.
+  V_COMMIT: cbf4e85
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -12,7 +19,8 @@ jobs:
 
       - name: Install V
         run: |
-          git clone --depth=1 https://github.com/vlang/v /tmp/v
+          git clone https://github.com/vlang/v /tmp/v
+          git -C /tmp/v checkout "$V_COMMIT"
           make -C /tmp/v
           echo "/tmp/v" >> "$GITHUB_PATH"
 
@@ -36,6 +44,17 @@ jobs:
         run: |
           pip install --quiet check-jsonschema
           make schema
+
+      # core/doh_h2_d_doh_h2.v only compiles with -d doh_h2; without this,
+      # its stub is what -d doh_h2 would replace, and CI would never notice
+      # if the real implementation stopped compiling.
+      - name: Install libcurl for the -d doh_h2 build
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+
+      - name: Build and test with -d doh_h2
+        run: |
+          make build CURL=1
+          make test CURL=1
 
 # CI must never generate traffic to third-party resolvers.
 # Integration tests run against a local mock authoritative server.
