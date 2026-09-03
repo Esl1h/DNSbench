@@ -707,7 +707,10 @@ fn parse_args(args []string) !Options {
 				if ms < 1 {
 					return error('--timeout needs a positive number of milliseconds')
 				}
-				o = Options{ ...o, timeout: ms * time.millisecond }
+				// i64 first: `ms * time.millisecond` truncates to a 32-bit
+				// product before widening to the i64 Duration on V 0.5.2
+				// cbf4e85, silently going negative anywhere above ~2147 ms.
+				o = Options{ ...o, timeout: i64(ms) * time.millisecond }
 			}
 			'--cold-zone' {
 				o = Options{ ...o, cold_zone: value }

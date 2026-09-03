@@ -188,12 +188,17 @@ pub fn parse_duration(text string) !time.Duration {
 	if n <= 0 {
 		return error('"${text}" is not a positive duration')
 	}
+	// n64 first: on V 0.5.2 cbf4e85, `n * time.hour` truncates to a 32-bit
+	// product before widening to the i64 Duration, so every unit here
+	// silently produced garbage. Widening the left operand first is what
+	// makes the multiplication happen at i64 width throughout.
+	n64 := i64(n)
 	return match unit {
-		`s` { n * time.second }
-		`m` { n * time.minute }
-		`h` { n * time.hour }
-		`d` { n * 24 * time.hour }
-		`w` { n * 7 * 24 * time.hour }
+		`s` { n64 * time.second }
+		`m` { n64 * time.minute }
+		`h` { n64 * time.hour }
+		`d` { n64 * 24 * time.hour }
+		`w` { n64 * 7 * 24 * time.hour }
 		else { error('"${text}" must end in s, m, h, d or w') }
 	}
 }

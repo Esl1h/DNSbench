@@ -80,11 +80,14 @@ fn test_sparkline_of_nothing_is_empty() {
 }
 
 fn test_parse_duration_reads_the_documented_units() ! {
-	assert parse_duration('30d')! == 30 * 24 * time.hour
-	assert parse_duration('12h')! == 12 * time.hour
-	assert parse_duration('2w')! == 2 * 7 * 24 * time.hour
-	assert parse_duration('5m')! == 5 * time.minute
-	assert parse_duration('30s')! == 30 * time.second
+	// i64(...) first in every expected value: V 0.5.2 cbf4e85 truncates
+	// `int * int * time.Duration` to 32 bits before widening the product,
+	// the same overflow parse_duration's own fix works around.
+	assert parse_duration('30d')! == i64(30) * 24 * time.hour
+	assert parse_duration('12h')! == i64(12) * time.hour
+	assert parse_duration('2w')! == i64(2) * 7 * 24 * time.hour
+	assert parse_duration('5m')! == i64(5) * time.minute
+	assert parse_duration('30s')! == i64(30) * time.second
 }
 
 fn test_parse_duration_rejects_nonsense() {
