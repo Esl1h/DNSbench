@@ -13,7 +13,13 @@ env:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, and for the same reproducibility
+    # reason V_COMMIT is: two catalog tests panicked here with "interface
+    # method walker__Modifier.modify not implemented", V's own generated C
+    # dispatch code breaking, reproducibly, only on ubuntu-latest (24.04)
+    # and never locally against the identical V_COMMIT. release.yml already
+    # pins ubuntu-22.04 for its build matrix; this matches it.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
