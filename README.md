@@ -19,9 +19,10 @@ terminal interface beside it under `--tui`.
 
 ## Status
 
-Pre-release, and the gap between what is specified and what is built is wide enough to state
-up front. The documents in `docs/` are the specification and were written before any code;
-they describe the finished tool, not the current binary.
+[`v0.1.0`](https://github.com/Esl1h/DNSbench/releases/tag/v0.1.0) is released, and the gap
+between what is specified and what is built is still wide enough to state up front. The
+documents in `docs/` are the specification and were written before any code; they describe the
+finished tool, not the current binary.
 
 **Working today:**
 

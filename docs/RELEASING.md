@@ -143,10 +143,16 @@ against **DNSCrypt's** published key and needs no key of ours; that is built and
 and a decision about where it lives, and is not on the milestone list. The
 verifier would be reusable for it if that decision is ever taken.
 
-**Verification of the workflow itself.** Everything above that can be run from a
-checkout has been: `make release`, `make install` into a staging root, the man
-page through `groff -ww` and `man`, the bash completion through `shellcheck` and
-by invoking it, the zsh completion by driving the completion system through a
-pty. The workflow cannot run here. Its YAML parses and its steps mirror commands
-that were run by hand, but the first tag is what verifies it, and the arm64
-runner and the musl static link are both unproven until then.
+**Verification of the workflow itself.** `v0.1.0` was the first tag, and it did
+not pass on the first attempt: the pinned compiler, `cbf4e85`, truncates
+`int * time.Duration` to 32 bits before widening it, a bug `store/history.v`'s
+`parse_duration` hit on every unit and `cmd/cli.v`'s `--timeout` hit above
+roughly 2147 ms, invisible against a newer unpinned V and caught only once
+`make check` actually ran under the pinned one; `release.yml` never installed
+`check-jsonschema`, unlike `ci.yml`; and the static, musl-linked build failed
+at the link step, `undefined reference to getcontext`, from the default
+Boehm GC's stack-scanning code, which Ubuntu's `musl-tools` does not provide
+for static linking, fixed by dropping the GC for `STATIC=1` builds only,
+`-gc none`, safe because `dnsbench` is a short-lived CLI process. All three
+are fixed and the tag that carries the fixes is the one that published.
+The arm64 runner and the musl static link are proven now, not unproven.
