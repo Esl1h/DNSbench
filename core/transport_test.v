@@ -6,7 +6,7 @@ import time
 
 // Transports are exercised against mock servers on the loopback interface.
 // No test in this repository sends a packet to a public resolver; see
-// CONTRIBUTING.md. Manual verification against real resolvers happens outside
+// docs/CONTRIBUTING.md. Manual verification against real resolvers happens outside
 // the suite and is rate-limited by hand.
 //
 // The mocks reply with testdata/minimal.response.bin, whose id is 0xbdeb, so

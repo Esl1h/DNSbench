@@ -134,7 +134,7 @@ and the code followed the table.
 
 Pull request against `data/providers.toml`, plus a CHANGELOG line. Requirements: public
 documentation URL for every endpoint, and a one-line justification of the distinct trade-off
-it represents. See CONTRIBUTING.md.
+it represents. See docs/CONTRIBUTING.md.
 
 ## Domain sets
 

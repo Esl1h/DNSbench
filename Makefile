@@ -91,7 +91,7 @@ release: check
 	strip $(DIST)/stage/$(BIN)-$(VERSION)-$(TARGET)/$(BIN)
 	cp packaging/dnsbench.1 $(DIST)/stage/$(BIN)-$(VERSION)-$(TARGET)/
 	cp packaging/completions/* $(DIST)/stage/$(BIN)-$(VERSION)-$(TARGET)/completions/
-	cp LICENSE README.md CHANGELOG.md $(DIST)/stage/$(BIN)-$(VERSION)-$(TARGET)/
+	cp LICENSE README.md docs/CHANGELOG.md $(DIST)/stage/$(BIN)-$(VERSION)-$(TARGET)/
 	cp $(DIST)/stage/$(BIN)-$(VERSION)-$(TARGET)/$(BIN) $(DIST)/$(BIN)-$(VERSION)-$(TARGET)
 	tar -czf $(DIST)/$(BIN)-$(VERSION)-$(TARGET).tar.gz -C $(DIST)/stage $(BIN)-$(VERSION)-$(TARGET)
 	rm -rf $(DIST)/stage

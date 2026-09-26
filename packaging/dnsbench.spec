@@ -51,7 +51,7 @@ make install DESTDIR=%{buildroot} PREFIX=%{_prefix}
 
 %files
 %license LICENSE
-%doc README.md CHANGELOG.md
+%doc README.md docs/CHANGELOG.md
 %{_bindir}/dnsbench
 %{_mandir}/man1/dnsbench.1*
 %{_datadir}/bash-completion/completions/dnsbench

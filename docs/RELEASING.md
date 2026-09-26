@@ -18,7 +18,7 @@ dnsbench-0.1.0-linux-arm64.tar.gz
 SHA256SUMS
 ```
 
-Versioning is SemVer, with one rule of its own from `CHANGELOG.md`: a change to
+Versioning is SemVer, with one rule of its own from `docs/CHANGELOG.md`: a change to
 the score is **semver-minor at minimum**, because people make decisions from that
 number. A dataset ID bump, the Tranco list or the catalog version, gets its own
 changelog entry, because it breaks historical comparability and `history` has to
@@ -29,7 +29,7 @@ be able to detect it.
 1. **Bump the version in `v.mod`.** It is the single source: the Makefile reads
    it and passes it to the compiler, and `cmd/cli.v` carries the same string only
    as the default for a build made outside a checkout.
-2. **Move `CHANGELOG.md`'s `[Unreleased]` section under the new version**, with
+2. **Move `docs/CHANGELOG.md`'s `[Unreleased]` section under the new version**, with
    the date.
 3. **`make check`**, then commit both.
 4. **Tag and push.** `git tag -s v0.1.0 -m 'dnsbench 0.1.0' && git push --tags`.

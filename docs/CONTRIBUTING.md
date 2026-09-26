@@ -83,6 +83,6 @@ latency report without the network fingerprint is unactionable.
 
 ## Security
 
-Report vulnerabilities privately to the address in `SECURITY.md`. Relevant classes: catalog
+Report vulnerabilities privately to the address in `docs/SECURITY.md`. Relevant classes: catalog
 verification bypass, TLS validation weakness, and anything that causes the tool to send more
 traffic to third parties than documented.
