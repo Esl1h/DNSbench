@@ -61,6 +61,8 @@ dnsbench --probes warm,tcp,cold           # pick the probes
 dnsbench history --last 30d --plot --provider nextdns
 ```
 
+[docs/USAGE.md](docs/USAGE.md) is the full guide: every probe, profile, catalog option, output
+format, history, watch mode, scripting and troubleshooting, with examples.
 `dnsbench --help` lists every flag the binary actually accepts, which is the list to trust;
 `--version` says which commit it was built from; `man dnsbench` is the full reference once
 installed. A run refuses to start when a tunnel interface is up, because it would be
@@ -193,6 +195,7 @@ bug.
 
 | Document | Contents |
 |---|---|
+| [docs/USAGE.md](docs/USAGE.md) | How to use it: probes, profiles, catalogs, history, watch, scripting |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module layout, data flow, concurrency model |
 | [docs/METHODOLOGY.md](docs/METHODOLOGY.md) | What each probe measures and why; fairness rules |
 | [docs/SCORING.md](docs/SCORING.md) | The composite score, weight profiles, tie handling |
