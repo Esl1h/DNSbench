@@ -163,7 +163,7 @@ fn test_a_probe_with_no_samples_serialises_nulls_not_zeros() ! {
 	// The reason the fields are nullable at all. A zero p50 beside 100 % loss
 	// reads as the fastest resolver in the table.
 	doc := json2.decode[json2.Any](sample_run().to_json())!.as_map()
-	results := doc['results'] or { json2.Any('') }.arr()
+	results := doc['results'] or { json2.Any('') }.as_array()
 
 	dead := results[1].as_map()
 	assert dead['key'] or { json2.Any('') }.str() == 'dns4eu-protective'
@@ -187,7 +187,7 @@ fn test_an_excluded_provider_stays_in_the_output_with_its_reason() ! {
 	// from the ranking, show the reason. A silently absent row is a hole nobody
 	// notices.
 	doc := json2.decode[json2.Any](sample_run().to_json())!.as_map()
-	dead := (doc['results'] or { json2.Any('') }.arr())[1].as_map()
+	dead := (doc['results'] or { json2.Any('') }.as_array())[1].as_map()
 
 	assert (dead['excluded'] or { json2.Any('') }).str() == 'unreachable'
 	assert dead['rank'] or { json2.Any('') } is json2.Null
@@ -200,13 +200,13 @@ fn test_measured_capabilities_and_declared_claims_stay_apart() ! {
 	// tell what was probed from what was asserted, and merging them here would
 	// remove that possibility for good.
 	doc := json2.decode[json2.Any](sample_run().to_json())!.as_map()
-	fast := (doc['results'] or { json2.Any('') }.arr())[0].as_map()
+	fast := (doc['results'] or { json2.Any('') }.as_array())[0].as_map()
 
 	caps := (fast['capabilities'] or { json2.Any('') }).as_map()
 	assert caps['dnssec_validating'] or { json2.Any('') }.bool() == true
-	assert caps['transports'] or { json2.Any('') }.arr().len == 4
+	assert caps['transports'] or { json2.Any('') }.as_array().len == 4
 
-	declared := (fast['declared'] or { json2.Any('') }).arr()
+	declared := (fast['declared'] or { json2.Any('') }).as_array()
 	assert declared.len == 2
 	assert declared[0].str() == 'nolog'
 
@@ -219,7 +219,7 @@ fn test_doh_results_are_labelled_with_their_http_version() ! {
 	// An h1.1 measurement is not comparable with a browser's real h2 behaviour,
 	// and docs/OUTPUT.md says the output must not hide that.
 	doc := json2.decode[json2.Any](sample_run().to_json())!.as_map()
-	fast := (doc['results'] or { json2.Any('') }.arr())[0].as_map()
+	fast := (doc['results'] or { json2.Any('') }.as_array())[0].as_map()
 	probes := (fast['probes'] or { json2.Any('') }).as_map()
 
 	doh := (probes['doh'] or { json2.Any('') }).as_map()
@@ -233,8 +233,8 @@ fn test_doh_results_are_labelled_with_their_http_version() ! {
 fn test_a_stale_cdn_host_is_reported_rather_than_dropped() ! {
 	// docs/DATA.md: better a visible gap than a silently wrong number.
 	doc := json2.decode[json2.Any](sample_run().to_json())!.as_map()
-	fast := (doc['results'] or { json2.Any('') }.arr())[0].as_map()
-	hosts := ((fast['edge'] or { json2.Any('') }).as_map()['hosts'] or { json2.Any('') }).arr()
+	fast := (doc['results'] or { json2.Any('') }.as_array())[0].as_map()
+	hosts := ((fast['edge'] or { json2.Any('') }).as_map()['hosts'] or { json2.Any('') }).as_array()
 
 	assert hosts.len == 2
 	stale := hosts[1].as_map()

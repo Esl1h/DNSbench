@@ -9,6 +9,18 @@ comparability and `history` must be able to detect it.
 
 ## [Unreleased]
 
+### Fixed
+- CI bootstrap broke on any fresh runner: `make -C /tmp/v` pulled the latest
+  `vlang/vc` generated-C snapshot, which no longer bootstraps the pinned
+  compiler (`cbf4e85`) at all, failing both via undefined references and the
+  compiler's own 10 GiB self-build memory guard. Both workfows now pin the
+  vc snapshot (`VC_COMMIT`, currently `9d047035`, the 2026-09-01 one that
+  still pairs with `cbf4e85`) and perform the two-stage bootstrap by hand,
+  because the GNUmakefile `latest_vc` target unconditionally pulls master.
+  Verified locally: `cbf4e85` + `9d047035` bootstraps clean and the full test
+  suite passes under it. Reproducing v0.1.0 artifacts needs the same pin;
+  `docs/RELEASING.md` § Reproducibility was updated.
+
 ### Added
 - `-d doh_h2` opt-in build: DoH over HTTP/2 through libcurl (`libcurl-devel` or equivalent needed
   at build time, nothing beyond the shared library at runtime), `make build CURL=1`. Quad9

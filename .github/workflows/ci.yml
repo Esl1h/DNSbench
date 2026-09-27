@@ -10,6 +10,15 @@ env:
   # whatever vlang/v's master happens to be on the day it runs rather than
   # the compiler docs/RELEASING.md's reproducibility section is about.
   V_COMMIT: cbf4e85
+  # The bootstrap snapshot of the generated-C compiler in vlang/vc, which
+  # compiles v1 out of v.c, moves much faster than any V pin does: a newer
+  # snapshot can emit calls to builtins the pinned V tree does not have and
+  # need more memory to compile cmd/v than the pinned compiler's own build
+  # allows, and `make -C`'s latest_vc target pulls master whichever pin is
+  # used. 9d047035 is the 2026-09-01 snapshot that pairs with c-dog857; pick
+  # the newest one that still bootstraps the V_COMMIT of the day by finding
+  # its "[v:master] <sha>" label in the vc log.
+  VC_COMMIT: 9d047035
 
 jobs:
   check:
@@ -23,11 +32,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The vc snapshot is pinned and the bootstrap is done by hand, because
+      # GNUmakefile's latest_vc target unconditionally pulls vc master. This
+      # is the same two-stage self-compile `make -C /tmp/v` performs, minus
+      # the pull, plus the pinned vc.
       - name: Install V
         run: |
-          git clone https://github.com/vlang/v /tmp/v
+          git clone --filter=blob:none https://github.com/vlang/v /tmp/v
           git -C /tmp/v checkout "$V_COMMIT"
-          make -C /tmp/v
+          git clone --filter=blob:none https://github.com/vlang/vc /tmp/v/vc
+          git -C /tmp/v/vc checkout "$VC_COMMIT"
+          cc -std=c99 -w -o /tmp/v/v1 /tmp/v/vc/v.c -lm -lpthread
+          /tmp/v/v1 -no-parallel -o /tmp/v/v2 -gc none cmd/v
+          /tmp/v/v2 -nocache -o /tmp/v/v -gc none cmd/v
+          rm -f /tmp/v/v1 /tmp/v/v2
+          bash /tmp/v/cmd/tools/select_linux_tcc.sh fresh /tmp/v/thirdparty/tcc \
+            https://github.com/vlang/tccbin amd64 /tmp/v
           echo "/tmp/v" >> "$GITHUB_PATH"
 
       # Every step below goes through the Makefile rather than repeating the

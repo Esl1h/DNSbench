@@ -262,7 +262,7 @@ fn cell_text(p store.ProviderResult, column Column, view string, selected_rank s
 	stats := stats_named(p, view)
 	return match column {
 		.rank { selected_rank }
-		.provider { '${truncate(p.label, 18):-18s}' }
+		.provider { '${ellipsize(p.label, 18):-18s}' }
 		.score {
 			if p.ranked.excluded != none { '    -' } else { '${p.ranked.score:5.1f}' }
 		}
@@ -305,7 +305,9 @@ fn misrouted_text(p store.ProviderResult) string {
 	return '${p.edge.misrouted}/${p.edge.measured}'
 }
 
-fn truncate(s string, width int) string {
+// width-aware truncation for the TUI columns, marking the cut; named `ellipsize`
+// because `truncate` collides with os.truncate in the generated C.
+fn ellipsize(s string, width int) string {
 	if s.len <= width {
 		return s
 	}

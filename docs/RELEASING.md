@@ -62,6 +62,16 @@ keep doing.
 API-stable and its generated C changes between commits; an unpinned toolchain
 means an unreproducible artifact.
 
+**So is the bootstrap snapshot.** `v1` is built from the generated C in
+`vlang/vc`, whose master moves far faster than any V pin does, and a newer
+snapshot can both emit calls to builtins the pinned V tree lacks and need
+more memory compiling `cmd/v` than the pinned compiler permits (v0.1.0's
+first failed CI run of 2026-09-26 was exactly this: fresh vc + cbf4e85).
+`VC_COMMIT` in the workflows pins it too; find the one to pin by looking for
+the `"[v:master] <sha>"` label in the vc log nearest, but not newer, to
+`V_COMMIT`. The workflows bootstrap V by hand instead of `make -C /tmp/v`,
+because the GNUmakefile `latest_vc` target unconditionally pulls vc master.
+
 **The version and the commit are compile-time defines, not file edits.**
 `-d version=` and `-d commit=`, read with `$d()`. Nothing in the source is
 rewritten to make a release, so the tree at the tag is the tree that was built.
@@ -86,7 +96,13 @@ so that anyone can reproduce a published binary by doing the same. See
 
 ```sh
 git clone https://github.com/vlang/v /tmp/v && git -C /tmp/v checkout <V_COMMIT>
-make -C /tmp/v
+git clone https://github.com/vlang/vc /tmp/v/vc && git -C /tmp/v/vc checkout <VC_COMMIT>
+cc -std=c99 -w -o /tmp/v/v1 /tmp/v/vc/v.c -lm -lpthread
+/tmp/v/v1 -no-parallel -o /tmp/v/v2 -gc none cmd/v
+/tmp/v/v2 -nocache -o /tmp/v/v -gc none cmd/v
+tmarch=amd64; [ "$(uname -m)" = aarch64 ] && tmarch=arm64
+bash /tmp/v/cmd/tools/select_linux_tcc.sh fresh /tmp/v/thirdparty/tcc \
+    https://github.com/vlang/tccbin "$tmarch" /tmp/v
 sudo mkdir -p /build && sudo git clone --branch v0.1.0 \
     https://github.com/Esl1h/DNSbench /build/dnsbench
 sudo chown -R "$USER" /build/dnsbench
@@ -95,7 +111,11 @@ sha256sum -c SHA256SUMS
 ```
 
 `V_COMMIT` is in `.github/workflows/release.yml` at the tag being reproduced,
-never the current one.
+never the current one. So is `VC_COMMIT`, but only from the first workflow to
+carry it; reproducing a tag whose workflow predates that pin needs its own
+vc snapshot, and the one published alongside 9d047035 pairs with `cbf4e85`
+(the 2026-09-01 `9d047035` snapshot or any of its predecessors known to
+bootstrap that V tree).
 
 ## Packaging
 

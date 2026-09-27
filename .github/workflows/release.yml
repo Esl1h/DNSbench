@@ -12,6 +12,10 @@ env:
   # The toolchain is pinned, because the binary is a function of the source and
   # the compiler that built it. docs/RELEASING.md § Reproducibility.
   V_COMMIT: cbf4e85
+  # The generated-C snapshot the bootstrap compiler v1 is built from. Both
+  # jobs need the same one at a different architecture: see ci.yml's pin
+  # comment for why this cannot be left to float.
+  VC_COMMIT: 9d047035
   # Every job builds at the same absolute path. V's $embed_file records the
   # absolute path of what it embedded, so two builds of the same source at
   # different paths differ; the same source at the same path does not.
@@ -45,9 +49,20 @@ jobs:
 
       - name: Install V
         run: |
-          git clone https://github.com/vlang/v /tmp/v
+          git clone --filter=blob:none https://github.com/vlang/v /tmp/v
           git -C /tmp/v checkout "$V_COMMIT"
-          make -C /tmp/v
+          git clone --filter=blob:none https://github.com/vlang/vc /tmp/v/vc
+          git -C /tmp/v/vc checkout "$VC_COMMIT"
+          cc -std=c99 -w -o /tmp/v/v1 /tmp/v/vc/v.c -lm -lpthread
+          /tmp/v/v1 -no-parallel -o /tmp/v/v2 -gc none cmd/v
+          /tmp/v/v2 -nocache -o /tmp/v/v -gc none cmd/v
+          rm -f /tmp/v/v1 /tmp/v/v2
+          case "$(uname -m)" in
+            aarch64|arm64) TCCARCH=arm64 ;;
+            *)             TCCARCH=amd64 ;;
+          esac
+          bash /tmp/v/cmd/tools/select_linux_tcc.sh fresh /tmp/v/thirdparty/tcc \
+            https://github.com/vlang/tccbin "$TCCARCH" /tmp/v
           echo "/tmp/v" >> "$GITHUB_PATH"
 
       - name: Cut the artifacts
