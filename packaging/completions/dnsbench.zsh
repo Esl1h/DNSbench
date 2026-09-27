@@ -31,7 +31,7 @@ _dnsbench() {
 
 	if (( CURRENT == 2 )); then
 		_arguments -s \
-			'1:subcommand:(update history)' \
+			'1:subcommand:(update history help)' \
 			'--profile[weight profile for the composite score]:profile:(balanced speed privacy streaming gaming)' \
 			'--only[measure only these catalog keys]:keys:' \
 			'--catalog[provider source]:name:(embedded dnscrypt)' \

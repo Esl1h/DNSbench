@@ -64,8 +64,8 @@ dnsbench history --last 30d --plot --provider nextdns
 [docs/USAGE.md](docs/USAGE.md) is the full guide: every probe, profile, catalog option, output
 format, history, watch mode, scripting and troubleshooting, with examples.
 `dnsbench --help` lists every flag the binary actually accepts, which is the list to trust;
-`--version` says which commit it was built from; `man dnsbench` is the full reference once
-installed. A run refuses to start when a tunnel interface is up, because it would be
+`--version` says which commit it was built from; `dnsbench help` is the full reference, the
+man page built into the binary. A run refuses to start when a tunnel interface is up, because it would be
 measuring the tunnel and not the link; `--force` overrides and says so in the output.
 
 ### Probes

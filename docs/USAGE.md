@@ -6,9 +6,9 @@ back. Two other references sit beside it:
 - `dnsbench --help` lists every flag the binary you have actually accepts. When this guide and
   `--help` disagree, trust `--help`.
 - The man page, [`packaging/dnsbench.1`](../packaging/dnsbench.1), is the complete flag
-  reference: every option, exit status, environment variable and file. `make install` puts it
-  where `man dnsbench` finds it; from a checkout, `man ./packaging/dnsbench.1` reads it
-  directly.
+  reference: every option, exit status, environment variable and file. `dnsbench help` shows
+  it from a copy built into the binary, so a downloaded release has it too; `make install`
+  also puts it where `man dnsbench` finds it.
 
 The rest of `docs/` is the specification: what each probe measures and why
 ([METHODOLOGY.md](METHODOLOGY.md)), how the score is built ([SCORING.md](SCORING.md)), and

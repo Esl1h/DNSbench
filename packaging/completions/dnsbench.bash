@@ -36,7 +36,7 @@ _dnsbench() {
 		return
 	fi
 	if [[ $COMP_CWORD -eq 1 ]]; then
-		mapfile -t COMPREPLY < <(compgen -W "update history --profile --only --rounds --quick \
+		mapfile -t COMPREPLY < <(compgen -W "update history help --profile --only --rounds --quick \
 			--probes --format --history --timeout --cold-zone --ca-bundle --catalog \
 			--require --near --tui --palette --no-color --region --no-geo --force \
 			--seed --watch --watch-count --alert-edge --version --help" -- "$cur")

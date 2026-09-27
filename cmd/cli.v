@@ -96,6 +96,9 @@ fn main() {
 	os.signal_ignore(.pipe)
 
 	mut args := os.args[1..].clone()
+	if args.len > 0 && args[0] == 'help' {
+		exit(show_manual())
+	}
 	// Two subcommands, and neither is a measurement: one fetches the optional
 	// catalog and verifies it, the other reads a history file back. Everything
 	// else is flags.
@@ -271,6 +274,35 @@ fn sleep_unless_interrupted(interval time.Duration, mut interrupted stdatomic.At
 		left -= step
 	}
 	return !interrupted.load()
+}
+
+// manual is the man page, carried in the binary because the release download
+// is the binary alone and `man dnsbench` finds nothing until `make install`.
+const manual = $embed_file('../packaging/dnsbench.1')
+
+const manual_url = 'https://github.com/Esl1h/DNSbench/blob/main/packaging/dnsbench.1'
+
+fn C.pclose(stream voidptr) int
+
+// show_manual is `dnsbench help`: the embedded page handed to `man -l -` on
+// its standard input. No temporary file is written, so there is no predictable
+// path in a shared /tmp for another user to swap. Without man, or when it
+// fails, the flag list is printed instead with where the full page lives.
+fn show_manual() int {
+	if os.find_abs_path_of_executable('man') or { '' } != '' {
+		text := manual.to_string()
+		stream := C.popen(c'man -l -', c'w')
+		if !isnil(stream) {
+			C.fwrite(text.str, 1, text.len, stream)
+			if C.pclose(stream) == 0 {
+				return store.exit_ok
+			}
+		}
+	}
+	println(usage_text())
+	println('')
+	println('man could not show the full page here; it is at ${manual_url}')
+	return store.exit_ok
 }
 
 // print_result writes a finished or partial run in the requested format.
@@ -631,6 +663,7 @@ fn usage_text() string {
 		'usage: dnsbench [options]',
 		'       dnsbench update             fetch and verify the DNSCrypt catalog',
 		'       dnsbench history [options]  read a JSONL history file back',
+		'       dnsbench help               the full manual page',
 		'',
 		'  --profile <name>   ${core.profiles.keys().join(', ')}  (default: balanced)',
 		'  --only <keys>      comma-separated provider keys',
@@ -670,7 +703,7 @@ fn usage_text() string {
 		'Exit: 0 ok, 1 measured with errors, 2 usage, 3 nothing reachable,',
 		'      4 catalog verification failed on update.',
 		'',
-		'Full reference: man dnsbench. Guide with examples:',
+		'Full reference: dnsbench help, or man dnsbench. Guide with examples:',
 		'https://github.com/Esl1h/DNSbench/blob/main/docs/USAGE.md',
 	].join('\n')
 }

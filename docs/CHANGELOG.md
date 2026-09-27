@@ -39,6 +39,9 @@ comparability and `history` must be able to detect it.
   immediately.
 
 ### Added
+- `dnsbench help` shows the man page from a copy built into the binary, through `man -l -`,
+  so the release download has it without `make install`. Without `man` it prints the flag list
+  and where the page lives.
 - `cold` degrades to `wild` when its zone does not answer, as `docs/DATA.md` states: a random
   label under the zone is asked of up to three resolvers about to be measured, and if none
   returns an address, `cold` asks random labels under the measured domains instead, records

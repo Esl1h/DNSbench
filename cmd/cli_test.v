@@ -2,6 +2,7 @@ module main
 
 import catalog
 import core
+import os
 import store
 import sync.stdatomic
 import time
@@ -480,4 +481,14 @@ fn test_nxdomain_is_a_cold_sample_only_in_wild() {
 	assert !answered_as_expected('warm', true, core.rcode_nxdomain)
 	assert answered_as_expected('cold', true, core.rcode_noerror)
 	assert !answered_as_expected('cold', true, core.rcode_servfail)
+}
+
+fn test_the_built_in_manual_is_the_packaged_one() ! {
+	// `dnsbench help` must never show a page that differs from `man dnsbench`.
+	packaged := os.read_file(os.join_path(@VMODROOT, 'packaging', 'dnsbench.1'))!
+	assert manual.to_string() == packaged
+}
+
+fn test_the_help_points_at_the_manual() {
+	assert usage_text().contains('dnsbench help')
 }

@@ -9,6 +9,8 @@ dnsbench \- rank DNS resolvers from your own connection, including CDN edge qual
 .br
 .B dnsbench history
 .RI [ options ]
+.br
+.B dnsbench help
 .SH DESCRIPTION
 .B dnsbench
 measures and ranks DNS resolvers from the link it is run on, over UDP, TCP,
@@ -188,6 +190,12 @@ Print the version and the commit it was built from.
 .TP
 .BR \-h ", " \-\-help
 Print the flag list the binary actually accepts.
+.SH HELP
+.B dnsbench help
+shows this page from a copy built into the binary, through
+.BR man ,
+so a downloaded release has it without
+.BR "make install" .
 .SH UPDATE
 .PP
 .B dnsbench update

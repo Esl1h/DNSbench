@@ -7,11 +7,12 @@
 
 complete -c dnsbench -f
 
-# The two subcommands, offered only in first position.
+# The three subcommands, offered only in first position.
 complete -c dnsbench -n __fish_use_subcommand -a update -d 'fetch and verify the DNSCrypt catalog'
+complete -c dnsbench -n __fish_use_subcommand -a help -d 'show the full manual page'
 complete -c dnsbench -n __fish_use_subcommand -a history -d 'read a JSONL history file back'
 
-set -l main_run 'not __fish_seen_subcommand_from update history'
+set -l main_run 'not __fish_seen_subcommand_from update history help'
 
 complete -c dnsbench -n "$main_run" -l profile -r -d 'weight profile for the composite score' \
 	-a 'balanced speed privacy streaming gaming'
