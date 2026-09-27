@@ -97,6 +97,7 @@ so that anyone can reproduce a published binary by doing the same. See
 ```sh
 git clone https://github.com/vlang/v /tmp/v && git -C /tmp/v checkout <V_COMMIT>
 git clone https://github.com/vlang/vc /tmp/v/vc && git -C /tmp/v/vc checkout <VC_COMMIT>
+cd /tmp/v
 cc -std=c99 -w -o /tmp/v/v1 /tmp/v/vc/v.c -lm -lpthread
 /tmp/v/v1 -no-parallel -o /tmp/v/v2 -gc none cmd/v
 /tmp/v/v2 -nocache -o /tmp/v/v -gc none cmd/v
