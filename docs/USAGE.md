@@ -62,7 +62,8 @@ example `cloudflare`, `google`, `quad9`, `quad9-ecs`, `adguard`, `mullvad`, `nex
   latency is built on it.
 - **`tcp`**: the same question over TCP, the path a truncated answer falls back to.
 - **`cold`**: a random name nobody has asked for, so every query is a cache miss and the
-  resolver has to recurse. Needs `--cold-zone`, see below.
+  resolver has to recurse. Asks under the project's own zone unless `--cold-zone` names
+  another, see below.
 - **`ecs`**: resolves DNS-steered CDN hostnames through each resolver and times a TCP connect
   to whatever address came back. Reports the median penalty against the best edge any
   resolver reached in this run. This is the `EDGE` column.
@@ -89,7 +90,7 @@ dnsbench --probes warm,dot-fresh,dot-warm,doh
 dnsbench --probes warm,dnssec,filter
 
 # recursion cost, cache misses only
-dnsbench --probes warm,cold --cold-zone probe.dnsbench.esli.blog
+dnsbench --probes warm,cold
 
 # more samples per provider for a tighter interval (default 5 rounds)
 dnsbench --probes warm,ecs --rounds 10
@@ -97,11 +98,9 @@ dnsbench --probes warm,ecs --rounds 10
 
 ### The cold probe and its zone
 
-`cold` asks for random labels under a wildcard zone, so it needs one: without `--cold-zone`
-the probe is skipped and the run says so, rather than sending NXDOMAIN traffic to a third
-party.
-
-The project operates `probe.dnsbench.esli.blog` for this:
+`cold` asks for random labels under a wildcard zone, so every query is a cache miss without
+sending NXDOMAIN traffic to a third party. By default it asks under
+`probe.dnsbench.esli.blog`, which the project operates for exactly this:
 
 - **Delegated** from `esli.blog` and hosted separately on Bunny DNS, so a mistake or a
   traffic spike in the probe zone never touches the parent.
@@ -270,8 +269,7 @@ the loop runs until interrupted. `--watch` and `--tui` are refused together.
 ## The terminal interface
 
 ```sh
-dnsbench --tui --probes warm,cold,ecs,dot-warm,dnssec,filter \
-         --cold-zone probe.dnsbench.esli.blog
+dnsbench --tui --probes warm,cold,ecs,dot-warm,dnssec,filter
 ```
 
 Every provider has a row from the first frame and the table fills in as results arrive. Keys:
@@ -340,8 +338,9 @@ make build CURL=1
 
 - **"tunnel interfaces are up"**: disconnect the VPN, or pass `--force` knowing the numbers
   describe the tunnel.
-- **"cold probe skipped: no --cold-zone configured"**: add
-  `--cold-zone probe.dnsbench.esli.blog` or your own zone.
+- **`cold` shows heavy loss or refusals on every provider**: the zone may be unreachable.
+  Check it with `dig +dnssec x.probe.dnsbench.esli.blog`, or point `--cold-zone` at your
+  own.
 - **DoT or DoH all failing**: point `--ca-bundle` at the system bundle, for example
   `/etc/ssl/certs/ca-certificates.crt` or `/etc/pki/tls/certs/ca-bundle.crt`.
 - **A provider shows `refused` on DoH**: it probably requires HTTP/2; see above.

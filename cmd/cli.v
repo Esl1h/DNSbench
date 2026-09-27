@@ -846,7 +846,8 @@ mut:
 	refused map[string]int
 }
 
-fn run(opts Options, mut watcher Watcher) !store.RunResult {
+fn run(requested Options, mut watcher Watcher) !store.RunResult {
+	opts := with_cold_zone(requested)
 	started := time.now()
 	net := core.detect()
 
@@ -891,22 +892,7 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 		}
 	}
 
-	mut probes := opts.probes.clone()
-	if 'cold' in probes && opts.cold_zone == '' {
-		// docs/DATA.md § Cold-probe zone: without a zone there is nothing to
-		// recurse to, and falling back to random labels under public domains
-		// would generate NXDOMAIN traffic against third parties.
-		probes = probes.filter(it != 'cold')
-		warnings << store.Warning{
-			level: 'warn'
-			key: 'cold'
-			message: 'cold probe skipped: no --cold-zone configured'
-		}
-		if probes.len == 0 {
-			return error('every requested probe was skipped')
-		}
-	}
-
+	probes := opts.probes.clone()
 	if 'filtering' in opts.require && 'filter' !in probes {
 		return error('--require filtering needs the filter probe: add --probes ...,filter')
 	}
@@ -2006,6 +1992,24 @@ fn doh2_query(subject Subject, ca_bundle string, msg []u8, mut doh2 map[string]&
 		code: core.rcode(reply)
 		http_version: core.doh2_http_version
 	}
+}
+
+// default_cold_zone is the wildcard zone the project operates for the cold
+// probe. docs/DATA.md § Cold-probe zone.
+const default_cold_zone = 'probe.dnsbench.esli.blog'
+
+// with_cold_zone points the cold probe at the project zone when none was given:
+// `own` is the default mode in docs/METHODOLOGY.md § cold. It applies only when
+// cold was asked for, because cold_mode travels with every result and a
+// warm-only run stamped `own` would stop being comparable with its own history.
+fn with_cold_zone(o Options) Options {
+	if o.cold_zone == '' && 'cold' in o.probes {
+		return Options{
+			...o
+			cold_zone: default_cold_zone
+		}
+	}
+	return o
 }
 
 // query_name is the name actually asked.

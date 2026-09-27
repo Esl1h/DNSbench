@@ -102,9 +102,11 @@ Per\-query timeout in milliseconds. Default 2000 for plaintext probes;
 encrypted probes use 5000, because a handshake is two more round trips.
 .TP
 .BI \-\-cold\-zone " zone"
-Wildcard zone the \fBcold\fR probe asks under. Without it the probe is skipped
-and the run says so, rather than generating NXDOMAIN traffic against a third
-party.
+Wildcard zone the \fBcold\fR probe asks under. Default
+.BR probe.dnsbench.esli.blog ,
+a DNSSEC\-signed zone the project operates for this and nothing else, run by
+none of the resolvers in the catalog. Only used when \fBcold\fR is among the
+probes.
 .TP
 .BI \-\-ca\-bundle " path"
 CA bundle for DoT and DoH, overriding the system cascade. The trust anchor is

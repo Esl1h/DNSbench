@@ -169,6 +169,14 @@ answers a fresh random label with `192.0.2.1` at a TTL of 60. `delv` validates i
 Pointing `--cold-zone` at your own zone is still supported; DATA § Setting the zone up has the
 records and the verification commands.
 
+The zone is the default whenever `cold` is asked for, which is `own` as METHODOLOGY § cold
+specifies; a run without `cold` still records `cold_mode: off`, so history stays comparable.
+Not built: DATA's degradation to `wild` when the zone is down. An unreachable zone today shows
+as loss and refusals on every provider, which is loud rather than wrong, but it is not the
+contract DATA states. `wild` sends random labels under public domains, NXDOMAIN traffic to
+third parties, so what it asks under is a decision to take deliberately, not a fallback to
+improvise.
+
 ### What the TUI cost, and what it changed underneath
 
 The frame loop was the smaller half. Three things in the layer below had to change, and each

@@ -78,9 +78,9 @@ is a new recursion), `ecs` (CDN edge penalty per resolver), `dot-fresh` vs. `dot
 `cold` needs a wildcard DNSSEC zone to ask against. The one it ships pointed at by default,
 `probe.dnsbench.esli.blog`, is operated by this project: wildcard onto RFC-reserved
 addresses, 60-second TTL, anycast with a São Paulo point of presence, run by neither any
-resolver in the catalog nor a third party. If it is ever unreachable, `cold` degrades to
-`wild` with a warning rather than producing a wrong number. Point `--cold-zone` at your own
-zone instead; `docs/DATA.md` § Cold-probe zone has the reasoning and the records.
+resolver in the catalog nor a third party. If it is ever unreachable, `cold` shows loss and
+refusals on every provider rather than a wrong number. Point `--cold-zone` at your own zone
+instead; `docs/DATA.md` § Cold-probe zone has the reasoning and the records.
 
 ### The terminal interface
 

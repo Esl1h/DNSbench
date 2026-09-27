@@ -345,3 +345,22 @@ fn test_a_provider_without_dot_keeps_only_the_plaintext_probes() ! {
 		}
 	}
 }
+
+fn test_the_cold_probe_defaults_to_the_project_zone() ! {
+	// docs/METHODOLOGY.md § cold: `own` against the project zone is the
+	// default mode, not an opt-in.
+	o := with_cold_zone(parse_args(['--probes', 'warm,cold'])!)
+	assert o.cold_zone == default_cold_zone
+}
+
+fn test_a_given_cold_zone_is_kept() ! {
+	o := with_cold_zone(parse_args(['--probes', 'cold', '--cold-zone', 'probe.example.org'])!)
+	assert o.cold_zone == 'probe.example.org'
+}
+
+fn test_a_run_without_the_cold_probe_gets_no_zone() ! {
+	// cold_mode is stamped from the zone, and history refuses to mix modes: a
+	// warm-only run must stay `off` to remain comparable with earlier ones.
+	o := with_cold_zone(parse_args(['--probes', 'warm,ecs'])!)
+	assert o.cold_zone == ''
+}

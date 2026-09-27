@@ -24,6 +24,11 @@ comparability and `history` must be able to detect it.
   its IPv6 address overran the 20-character column and pushed its row's figures out from
   under their headers.
 
+- `cold` ran only with an explicit `--cold-zone` and was skipped otherwise, although
+  `docs/METHODOLOGY.md` makes `own`, the project zone, the default mode. It now asks under
+  `probe.dnsbench.esli.blog` unless told otherwise. A run without `cold` still records
+  `cold_mode: off`, so existing history stays comparable.
+
 ### Added
 - A (provider, probe) pair that has never answered is suspended for the rest of its round after
   5 consecutive unanswered queries, and retried once per later round. The plan walks one query
