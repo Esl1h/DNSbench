@@ -157,11 +157,11 @@ fn main() {
 		interrupted: interrupted
 	}
 	mut watcher := Watcher(cli)
+	// An interrupted run is printed and not appended to history: a partial run is
+	// not comparable with the complete ones it would sit beside.
 	result := run(opts, mut watcher) or {
 		cli.clear()
 		if partial := cli.partial {
-			// Not appended to history: a partial run is not comparable with the
-			// complete ones it would sit beside.
 			print_result(opts.format, partial)
 			exit(store.exit_code(partial))
 		}
