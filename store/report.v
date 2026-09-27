@@ -474,8 +474,16 @@ pub fn (r RunResult) to_table() string {
 		'   INTERRUPTED, results are partial'
 	}
 	out << ''
-	out << '  #  PROVIDER              SCORE    p50    p95    JIT   LOSS   EDGE   MIS    DoT  FLAGS'
-	out << '  ' + '-'.repeat(76)
+	// The column grows to the longest label rather than cutting it: a system
+	// resolver's label is its address, and two addresses that differ only
+	// past the cut would read as the same resolver.
+	mut width := min_label_width
+	for p in r.results {
+		width = int_max(width, utf8_str_visible_length(p.label))
+	}
+	rule := 76 + width - min_label_width
+	out << '  #  ${pad_label('PROVIDER', width)}  SCORE    p50    p95    JIT   LOSS   EDGE   MIS    DoT  FLAGS'
+	out << '  ' + '-'.repeat(rule)
 
 	mut last_tier := 0
 	for p in r.results {
@@ -484,10 +492,10 @@ pub fn (r RunResult) to_table() string {
 		}
 		// A dim rule between tiers, so a shared band is visible without colour.
 		if last_tier != 0 && p.ranked.tier != last_tier {
-			out << '  ' + '-'.repeat(76)
+			out << '  ' + '-'.repeat(rule)
 		}
 		last_tier = p.ranked.tier
-		out << row_for(p, '${p.ranked.rank:3d}')
+		out << row_for(p, '${p.ranked.rank:3d}', width)
 	}
 
 	if last_tier == 0 {
@@ -497,10 +505,10 @@ pub fn (r RunResult) to_table() string {
 	mut excluded := r.results.filter(it.ranked.excluded != none)
 	if excluded.len > 0 {
 		out << ''
-		out << '  -- not ranked ' + '-'.repeat(62)
+		out << '  -- not ranked ' + '-'.repeat(rule - 14)
 		for p in excluded {
 			reason := p.ranked.excluded or { core.Exclusion.cache }
-			out << row_for(p, '  .') + '  (${reason.str()})'
+			out << row_for(p, '  .', width) + '  (${reason.str()})'
 		}
 	}
 
@@ -517,7 +525,15 @@ pub fn (r RunResult) to_table() string {
 	return out.join('\n') + '\n'
 }
 
-fn row_for(p ProviderResult, rank string) string {
+// min_label_width keeps the PROVIDER column at its old width when every label
+// fits, so a table of catalog names looks exactly as it always has.
+const min_label_width = 20
+
+fn pad_label(label string, width int) string {
+	return label + ' '.repeat(width - utf8_str_visible_length(label))
+}
+
+fn row_for(p ProviderResult, rank string, width int) string {
 	warm := probe_named(p, 'warm')
 	score := if p.ranked.excluded != none { '    -' } else { '${p.ranked.score:5.1f}' }
 
@@ -534,7 +550,7 @@ fn row_for(p ProviderResult, rank string) string {
 		flags << '~${d}'
 	}
 
-	return '${rank}  ${p.label:-20s}  ${score}  ' + '${cell(warm.p50)}  ${cell(warm.p95)}  ' + '${cell(warm.jitter)}  ${warm.loss:5.1f}%  ' + '${cell(p.edge.median_penalty_ms)}  ${misrouted_cell(p.edge):4s}  ' + '${cell(probe_named(p, 'dot_warm').p50)}  ${flags.join(' ')}'
+	return '${rank}  ${pad_label(p.label, width)}  ${score}  ' + '${cell(warm.p50)}  ${cell(warm.p95)}  ' + '${cell(warm.jitter)}  ${warm.loss:5.1f}%  ' + '${cell(p.edge.median_penalty_ms)}  ${misrouted_cell(p.edge):4s}  ' + '${cell(probe_named(p, 'dot_warm').p50)}  ${flags.join(' ')}'
 }
 
 fn probe_named(p ProviderResult, name string) core.Stats {

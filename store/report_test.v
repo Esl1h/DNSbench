@@ -259,6 +259,42 @@ fn test_the_golden_file_matches_what_the_emitter_produces() ! {
 	assert produced == expected, 'output differs from testdata/golden/run.json'
 }
 
+// ── table ────────────────────────────────────────────────────────────────────
+fn test_a_long_label_widens_the_column_instead_of_shifting_the_row() {
+	// Observed on a real run: `system 2a07:a8c0::39:24d3` is 25 characters and
+	// pushed every figure on its row out from under its header.
+	mut run := sample_run()
+	mut long := run.results[0]
+	long = ProviderResult{
+		...long
+		key: 'system'
+		label: 'system 2a07:a8c0::39:24d3'
+	}
+	run = RunResult{
+		...run
+		results: [run.results[0], long, run.results[1]]
+	}
+
+	lines := run.to_table().split('\n')
+	header := lines.filter(it.contains('PROVIDER'))[0]
+	col := header.index('SCORE') or { -1 }
+	assert col > 0, 'no SCORE header'
+	for label in ['Cloudflare', 'system 2a07:a8c0::39:24d3', 'DNS4EU (protective)'] {
+		row := lines.filter(it.contains(label))[0]
+		// SCORE is right-aligned in five characters under a five-letter header.
+		assert row[col..col + 5].trim_space() != '', '${label}: nothing under SCORE in "${row}"'
+		assert row[col - 2..col] == '  ', '${label}: row runs into the SCORE column: "${row}"'
+	}
+	// The whole label survives: two addresses differing past a cut would read
+	// as the same resolver.
+	assert lines.any(it.contains('system 2a07:a8c0::39:24d3 '))
+}
+
+fn test_short_labels_keep_the_original_column_width() {
+	header := sample_run().to_table().split('\n').filter(it.contains('PROVIDER'))[0]
+	assert header.starts_with('  #  PROVIDER              SCORE')
+}
+
 // ── CSV ──────────────────────────────────────────────────────────────────────
 fn test_the_csv_has_one_row_per_provider_and_probe() ! {
 	rows := sample_run().to_csv().trim_space().split('\n')
