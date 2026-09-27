@@ -112,11 +112,9 @@ sha256sum -c SHA256SUMS
 ```
 
 `V_COMMIT` is in `.github/workflows/release.yml` at the tag being reproduced,
-never the current one. So is `VC_COMMIT`, but only from the first workflow to
-carry it; reproducing a tag whose workflow predates that pin needs its own
-vc snapshot, and the one published alongside 9d047035 pairs with `cbf4e85`
-(the 2026-09-01 `9d047035` snapshot or any of its predecessors known to
-bootstrap that V tree).
+never the current one. So is `VC_COMMIT`, for every tag cut after the vc pin
+was added. A tag older than that, v0.1.0 included, has no `VC_COMMIT` in its
+workflow: use `9d047035`, the snapshot verified to bootstrap its `cbf4e85`.
 
 ## Packaging
 
