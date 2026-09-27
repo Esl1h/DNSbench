@@ -13,7 +13,7 @@ comparability and `history` must be able to detect it.
 - CI bootstrap broke on any fresh runner: `make -C /tmp/v` pulled the latest
   `vlang/vc` generated-C snapshot, which no longer bootstraps the pinned
   compiler (`cbf4e85`) at all, failing both via undefined references and the
-  compiler's own 10 GiB self-build memory guard. Both workfows now pin the
+  compiler's own 10 GiB self-build memory guard. Both workflows now pin the
   vc snapshot (`VC_COMMIT`, currently `9d047035`, the 2026-09-01 one that
   still pairs with `cbf4e85`) and perform the two-stage bootstrap by hand,
   because the GNUmakefile `latest_vc` target unconditionally pulls master.
