@@ -171,11 +171,11 @@ records and the verification commands.
 
 The zone is the default whenever `cold` is asked for, which is `own` as METHODOLOGY § cold
 specifies; a run without `cold` still records `cold_mode: off`, so history stays comparable.
-Not built: DATA's degradation to `wild` when the zone is down. An unreachable zone today shows
-as loss and refusals on every provider, which is loud rather than wrong, but it is not the
-contract DATA states. `wild` sends random labels under public domains, NXDOMAIN traffic to
-third parties, so what it asks under is a decision to take deliberately, not a fallback to
-improvise.
+Before the plan, a random label under the zone is asked of up to three of the resolvers about
+to be measured; one address back means the zone is up. When none answers, `cold` degrades to
+`wild` as DATA states: a random label under each measured domain, stamped `cold_mode: wild`,
+with a warning. In `wild`, NXDOMAIN is the answer the question was built to get, so it counts
+as a sample there and nowhere else.
 
 ### What the TUI cost, and what it changed underneath
 

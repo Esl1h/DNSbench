@@ -115,7 +115,9 @@ Wildcard zone the \fBcold\fR probe asks under. Default
 .BR probe.dnsbench.esli.blog ,
 a DNSSEC\-signed zone the project operates for this and nothing else, run by
 none of the resolvers in the catalog. Only used when \fBcold\fR is among the
-probes.
+probes. If a random label under the zone gets no address back from any of the
+first three resolvers measured, \fBcold\fR falls back to random labels under
+the measured domains, warns, and records \fBcold_mode\fR as \fBwild\fR.
 .TP
 .BI \-\-ca\-bundle " path"
 CA bundle for DoT and DoH, overriding the system cascade. The trust anchor is

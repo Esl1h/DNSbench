@@ -82,6 +82,9 @@ struct Options {
 	// quick is the --quick preset: quick_probes, and the fewest rounds that
 	// clear the ranking floor, settled in run() once the domain set is known.
 	quick bool
+	// cold_wild is set inside run() when the cold zone did not answer, never by
+	// a flag. docs/DATA.md § What this commits the operator to.
+	cold_wild bool
 }
 
 fn main() {
@@ -993,6 +996,28 @@ fn run(requested Options, mut watcher Watcher) !store.RunResult {
 		return error('no provider left to measure')
 	}
 
+	if 'cold' in probes && opts.cold_zone != '' {
+		mut targets := subjects.filter(!it.is_cache && it.ip != '').map(core.Target{
+			ip: it.ip
+			timeout: opts.timeout
+		})
+		if targets.len > zone_check_targets {
+			targets = targets[..zone_check_targets].clone()
+		}
+		if targets.len > 0 && !core.wildcard_answers(opts.cold_zone, targets) {
+			warnings << store.Warning{
+				level: 'warn'
+				key: 'cold'
+				message: 'cold zone ${opts.cold_zone} did not answer through ${targets.len} resolvers; cold falls back to wild: random labels under the measured domains, noisier and not comparable with own-zone runs'
+			}
+			opts = Options{
+				...opts
+				cold_zone: ''
+				cold_wild: true
+			}
+		}
+	}
+
 	domain_set := warm_domains(origin.region)!
 	if opts.quick {
 		opts = Options{
@@ -1787,7 +1812,7 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 		if step.discard {
 			continue
 		}
-		if out.refused || out.code != core.rcode_noerror {
+		if out.refused || !answered_as_expected(step.probe, opts.cold_wild, out.code) {
 			// An answer, and not a measurement. It is not a sample and it is
 			// not a dropped packet either.
 			subjects[idx].refused[step.probe]++
@@ -2224,7 +2249,14 @@ fn query_name(step core.Step, cold_zone string) string {
 	if step.probe != 'cold' {
 		return step.domain
 	}
-	return '${rand.string_from_set('abcdefghijklmnopqrstuvwxyz0123456789', 16)}.${cold_zone}'
+	label := rand.string_from_set('abcdefghijklmnopqrstuvwxyz0123456789', 16)
+	// No zone while cold runs is `wild`: the project zone did not answer, and a
+	// random label under a measured domain still forces real recursion, at the
+	// cost of NXDOMAIN traffic to that domain's authoritative servers.
+	if cold_zone == '' {
+		return '${label}.${step.domain}'
+	}
+	return '${label}.${cold_zone}'
 }
 
 fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities map[string]Capability, best_rtt ?f64, opts Options, net core.NetInfo, origin core.Origin, cat catalog.Catalog, started time.Time, duration f64, warnings []store.Warning, spec core.BootstrapSpec, domain_set_id string) store.RunResult {
@@ -2328,7 +2360,7 @@ fn assemble(subjects []Subject, edge map[string]core.EdgePenalty, capabilities m
 				// carrying the region actually merged in, and global is the
 				// case nothing was.
 				regional: if origin.region != core.region_global { origin.region } else { '' }
-				cold_mode: if opts.cold_zone == '' { 'off' } else { 'own' }
+				cold_mode: cold_mode_of(opts)
 			}
 		}
 		results: results
@@ -2403,6 +2435,30 @@ fn transports_used(probes []string) []string {
 // resolver, because they are ordinary public names and this is the resolver an
 // ordinary lookup would use. Empty when the machine has none configured, which
 // skips the lookup rather than picking a public resolver on the user's behalf.
+// answered_as_expected says whether an rcode is the answer the question was
+// built to get. A random label under a public domain has no record, so in
+// `wild` NXDOMAIN is the recursion completing, not a resolver declining; every
+// other question expects NOERROR.
+fn answered_as_expected(probe string, cold_wild bool, code int) bool {
+	if probe == 'cold' && cold_wild && code == core.rcode_nxdomain {
+		return true
+	}
+	return code == core.rcode_noerror
+}
+
+// cold_mode_of is the mode stamped into the result: history refuses to mix
+// modes, because `wild` and `own` measure different authoritative paths.
+fn cold_mode_of(opts Options) string {
+	if opts.cold_wild {
+		return 'wild'
+	}
+	return if opts.cold_zone == '' { 'off' } else { 'own' }
+}
+
+// zone_check_targets is how many resolvers are asked before the cold zone is
+// declared down. docs/DATA.md § What this commits the operator to.
+const zone_check_targets = 3
+
 fn first_resolver(net core.NetInfo) string {
 	for r in net.resolvers {
 		if r.ip != '' {

@@ -76,6 +76,11 @@ Modes:
 The chosen mode is stamped into the output. Results from different modes are not comparable
 and the tool refuses to merge them in `history`.
 
+`wild` is not offered as a choice; it is what `own` degrades to when the zone does not answer
+a check made before the plan (DATA § What this commits the operator to). A random label under a
+public domain has no record, so in `wild` an NXDOMAIN answer is the recursion completing and is
+recorded as a sample, not as a refusal.
+
 ### dot-fresh vs dot-warm — the measurement that fixes the classic error
 
 Most DNS benchmarks in circulation open a new TCP connection and a new TLS handshake for every

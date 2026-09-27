@@ -452,3 +452,32 @@ fn test_the_watch_interval_ends_early_on_an_interrupt() {
 	assert !sleep_unless_interrupted(time.hour, mut flag)
 	assert time.since(started) < time.second
 }
+
+fn test_wild_asks_a_fresh_label_under_the_measured_domain() {
+	// docs/METHODOLOGY.md § cold: `wild` is a random label under public
+	// domains, what cold falls back to when the project zone is down.
+	step := core.Step{
+		probe: 'cold'
+		domain: 'wikipedia.org'
+	}
+	first := query_name(step, '')
+	second := query_name(step, '')
+
+	assert first != second
+	assert first.ends_with('.wikipedia.org')
+	assert first.all_before('.wikipedia.org').len == 16
+}
+
+fn test_the_cold_mode_stamped_follows_what_cold_asked() {
+	assert cold_mode_of(Options{}) == 'off'
+	assert cold_mode_of(Options{ cold_zone: default_cold_zone }) == 'own'
+	assert cold_mode_of(Options{ cold_wild: true }) == 'wild'
+}
+
+fn test_nxdomain_is_a_cold_sample_only_in_wild() {
+	assert answered_as_expected('cold', true, core.rcode_nxdomain)
+	assert !answered_as_expected('cold', false, core.rcode_nxdomain)
+	assert !answered_as_expected('warm', true, core.rcode_nxdomain)
+	assert answered_as_expected('cold', true, core.rcode_noerror)
+	assert !answered_as_expected('cold', true, core.rcode_servfail)
+}

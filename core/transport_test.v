@@ -368,3 +368,63 @@ fn test_tcp_transport_open_gives_up_at_the_budget() {
 	assert elapsed >= 500
 	assert elapsed < 1500
 }
+
+// serve_udp_wildcard answers the first query the way a wildcard zone does:
+// the question echoed under its own ID, one A record, 192.0.2.1 with a TTL of
+// 60, per RFC 1035 § 4.1. The query's EDNS0 OPT record is dropped, since an
+// answer cannot follow the additional section.
+fn serve_udp_wildcard(mut server net.UdpConn) {
+	mut buf := []u8{len: 4096}
+	n, client := server.read(mut buf) or { return }
+	mut end := 12
+	for end < n && buf[end] != 0 {
+		end += int(buf[end]) + 1
+	}
+	// The root label, then QTYPE and QCLASS.
+	end += 5
+	mut reply := buf[..end].clone()
+	reply[2] = 0x81
+	reply[3] = 0x80
+	reply[6] = 0
+	reply[7] = 1
+	reply[10] = 0
+	reply[11] = 0
+	reply << [u8(0xc0), 0x0c, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 192, 0, 2, 1]
+	server.write_to(client, reply) or {}
+}
+
+fn test_a_wildcard_zone_that_answers_is_up() ! {
+	mut server, port := bind_udp_mock()!
+	defer {
+		server.close() or {}
+	}
+	worker := spawn serve_udp_wildcard(mut server)
+	assert wildcard_answers('probe.example.invalid', [
+		Target{
+			ip: '127.0.0.1'
+			port: port
+			timeout: 2 * time.second
+		},
+	])
+	worker.wait()
+}
+
+fn test_a_wildcard_zone_nobody_answers_for_is_down() ! {
+	mut server, port := bind_udp_mock()!
+	defer {
+		server.close() or {}
+	}
+	worker := spawn serve_udp_silently_dropping(mut server)
+	assert !wildcard_answers('probe.example.invalid', [
+		Target{
+			ip: '127.0.0.1'
+			port: port
+			timeout: 200 * time.millisecond
+		},
+	])
+	worker.wait()
+}
+
+fn test_no_targets_proves_nothing_up() {
+	assert !wildcard_answers('probe.example.invalid', []Target{})
+}

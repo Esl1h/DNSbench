@@ -354,9 +354,10 @@ make build CURL=1
 
 - **"tunnel interfaces are up"**: disconnect the VPN, or pass `--force` knowing the numbers
   describe the tunnel.
-- **`cold` shows heavy loss or refusals on every provider**: the zone may be unreachable.
-  Check it with `dig +dnssec x.probe.dnsbench.esli.blog`, or point `--cold-zone` at your
-  own.
+- **"cold zone ... did not answer ...; cold falls back to wild"**: the zone did not answer, so
+  `cold` asked random labels under the measured domains instead. Those numbers are recorded as
+  `cold_mode: wild` and are not comparable with own-zone runs. Check the zone with
+  `dig +dnssec x.probe.dnsbench.esli.blog`, or point `--cold-zone` at your own.
 - **DoT or DoH all failing**: point `--ca-bundle` at the system bundle, for example
   `/etc/ssl/certs/ca-certificates.crt` or `/etc/pki/tls/certs/ca-bundle.crt`.
 - **A provider shows `refused` on DoH**: it probably requires HTTP/2; see above.

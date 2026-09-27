@@ -39,6 +39,11 @@ comparability and `history` must be able to detect it.
   immediately.
 
 ### Added
+- `cold` degrades to `wild` when its zone does not answer, as `docs/DATA.md` states: a random
+  label under the zone is asked of up to three resolvers about to be measured, and if none
+  returns an address, `cold` asks random labels under the measured domains instead, records
+  `cold_mode: wild`, and warns. NXDOMAIN counts as a sample there, since it is the answer the
+  question was built to get.
 - `--quick`: `warm` and `ecs` only, in the fewest rounds that still clear the 30-sample
   ranking floor for the domain set in use. Refused together with `--rounds` or `--probes`.
 - A progress line on stderr for the plain CLI, only when stderr is a terminal: queries done,

@@ -1,6 +1,7 @@
 module core
 
 import os
+import rand
 import time
 
 // Where the run is, and on whose network.
@@ -407,6 +408,40 @@ pub fn parse_asn_answer(text string) string {
 //
 // They do not go through the Pacer and they are not part of the plan: they run
 // once, before any provider is measured, and their timing is never recorded.
+// wildcard_answers says whether a wildcard zone is up: a random label under it
+// is asked of each target in turn, and the first to come back with an address
+// settles it. docs/DATA.md § What this commits the operator to: when the zone
+// is down, `cold` degrades to `wild` rather than recording every provider's
+// failure to reach one authoritative server as that provider's loss.
+//
+// The targets are resolvers the run is about to measure anyway, so the check
+// adds a handful of queries to traffic the user already asked for. Asking more
+// than one keeps a single dead resolver from reading as a dead zone.
+pub fn wildcard_answers(zone string, targets []Target) bool {
+	for target in targets {
+		label := rand.string_from_set('abcdefghijklmnopqrstuvwxyz0123456789', 16)
+		mut transport := &UdpTransport{}
+		transport.open(target) or { continue }
+		message := build_query('${label}.${zone}', qtype_a) or {
+			transport.close()
+			return false
+		}
+		reply, _ := transport.query(message) or {
+			transport.close()
+			continue
+		}
+		transport.close()
+		if rcode(reply) != rcode_noerror {
+			continue
+		}
+		response := parse_response(reply) or { continue }
+		if response.a_addresses().len > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 fn ask_a(resolver string, name string, timeout time.Duration) ![]string {
 	response, _ := ask(resolver, name, qtype_a, timeout)!
 	return response.a_addresses()
