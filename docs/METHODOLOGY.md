@@ -351,6 +351,29 @@ The encrypted budgets are larger because they cover a TCP handshake and a TLS ha
 any DNS byte moves. A sample that exceeds its timeout is recorded as loss and never as a
 latency value; see Outliers.
 
+### Give up on silence
+
+The plan is walked one query at a time (docs/ARCHITECTURE.md § Concurrency model), so every
+unanswered query stalls the whole run for its full timeout. A target that is simply not there,
+such as a secondary system resolver the link cannot reach, would cost 300 × 2 s = 10 minutes of
+a default run and measure nothing. Observed: two such resolvers took 20 minutes of a
+30-minute run.
+
+So a (provider, probe) pair that has **never answered** is suspended after **5 consecutive
+unanswered queries**, for the rest of the current round. Each later round sends it one query:
+an answer returns it to the plan for good; silence suspends it for that round too. A dead
+target costs about 5 + 1 per round queries instead of every one in the plan.
+
+- **Any answer disarms it permanently**, a REFUSED or other error rcode included. A provider
+  losing a third of its queries is the finding (Report `n`, always) and is measured in full.
+- **A round, not the run.** A round queries each pair's domains back to back, so a link that
+  drops for ten seconds looks exactly like a dead target. Suspending for the round bounds what
+  that costs a live provider to one round's samples, visible as a lower `n`.
+- **Skipped queries are not sent and not counted.** Loss divides by what went out, so a
+  suspended target reads `n: 0`, loss 100 %, and is excluded as `unreachable`.
+- **Pairs are independent.** A resolver that drops UDP can still answer over DoT.
+- Every suspension is reported as a warning naming the pair and whether it answered later.
+
 ### Sample size
 
 Minimum 30 samples per (provider, probe) for a ranked result. Below that, the row is shown

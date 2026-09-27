@@ -956,7 +956,20 @@ fn run(opts Options, mut watcher Watcher) !store.RunResult {
 		warnings: warnings
 		domain_set_id: domain_set.id
 	})
-	execute(plan, mut subjects, opts, ca_bundle, mut watcher)!
+	trips := execute(plan, mut subjects, opts, ca_bundle, mut watcher)!
+	for t in trips {
+		label := subjects.filter(it.key == t.provider_key).map(it.label)[0] or { t.provider_key }
+		after := if t.recovered {
+			'it answered on a later round and was measured from there'
+		} else {
+			'one query per round after that, none answered'
+		}
+		warnings << store.Warning{
+			level: 'warn'
+			key: t.provider_key
+			message: '${label} ${t.probe}: no answer to the first ${core.breaker_misses} queries, stopped waiting on it for the round; ${after}'
+		}
+	}
 
 	mut capabilities := map[string]Capability{}
 	if probes.any(it in capability_probes) {
@@ -1474,7 +1487,7 @@ fn (mut w SilentWatcher) finish(_result store.RunResult, _samples []core.Samples
 // A step that fails contributes to loss and nothing else; the run never stops
 // for one bad provider, because the networks where that happens are exactly the
 // ones worth measuring. docs/ARCHITECTURE.md § Failure policy.
-fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle string, mut watcher Watcher) ! {
+fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle string, mut watcher Watcher) ![]core.BreakerTrip {
 	mut udp := map[string]&core.UdpTransport{}
 	mut tcp := map[string]&core.TcpTransport{}
 	// One TLS connection per provider, held for the run. That is the whole
@@ -1495,6 +1508,7 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 	warm_connections(subjects, opts, ca_bundle, mut tcp, mut dot, mut doh)
 
 	mut pacer := core.new_pacer(core.rate_interval)
+	mut breaker := core.Breaker{}
 	start := time.new_stopwatch()
 
 	defer {
@@ -1538,6 +1552,12 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 			timeout: opts.timeout
 		}
 
+		// A skipped step is not sent and not counted: loss divides by what went
+		// out, and nothing did.
+		if !breaker.allow(step.provider_key, step.probe, step.round) {
+			continue
+		}
+
 		// Politeness first: never send before the provider's own budget allows.
 		now := start.elapsed().nanoseconds()
 		send_at := pacer.reserve(step.provider_key, now, core.jitter_factor())
@@ -1552,11 +1572,13 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 		}
 
 		out := query_once(step, target, subjects[idx], opts, ca_bundle, mut udp, mut tcp, mut dot, mut doh, mut doh2) or {
+			breaker.record(step.provider_key, step.probe, step.round, false)
 			if !step.discard {
 				subjects[idx].failed[step.probe]++
 			}
 			continue
 		}
+		breaker.record(step.provider_key, step.probe, step.round, true)
 
 		// Kept before the discard check, because the very first exchange is the
 		// discarded one and an endpoint that refuses the HTTP version refuses
@@ -1581,6 +1603,7 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 		}
 		subjects[idx].samples[step.probe] << out.ms
 	}
+	return breaker.trips()
 }
 
 // TcpWarm, DotWarm and DohWarm carry one concurrent connection attempt back

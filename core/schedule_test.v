@@ -346,3 +346,89 @@ fn test_a_provider_not_named_keeps_the_run_probe_list() ! {
 	assert plan.filter(it.provider_key == 'a').all(it.probe == 'warm')
 	assert plan.filter(it.provider_key == 'b').all(it.probe == 'tcp')
 }
+
+// ── giving up on silence ─────────────────────────────────────────────────────
+
+// feed sends `n` steps of one pair through the breaker and returns how many it
+// let out.
+fn feed(mut b Breaker, key string, round int, n int, answered bool) int {
+	mut sent := 0
+	for _ in 0 .. n {
+		if b.allow(key, 'warm', round) {
+			sent++
+			b.record(key, 'warm', round, answered)
+		}
+	}
+	return sent
+}
+
+fn test_a_target_that_never_answers_costs_a_few_queries_not_a_round() {
+	mut b := Breaker{}
+
+	assert feed(mut b, 'dead', 0, 50, false) == breaker_misses
+	for round in 1 .. 6 {
+		// One query per later round, to find out whether it came back.
+		assert feed(mut b, 'dead', round, 50, false) == 1, 'round ${round}'
+	}
+
+	trips := b.trips()
+	assert trips.len == 1
+	assert trips[0].provider_key == 'dead'
+	assert trips[0].probe == 'warm'
+	assert !trips[0].recovered
+}
+
+fn test_a_lossy_target_is_never_cut_short() {
+	// docs/METHODOLOGY.md § Report n, always: a provider that loses a third of
+	// its queries is the finding. One answer disarms the breaker for good, so a
+	// long streak of loss later on is measured in full.
+	mut b := Breaker{}
+
+	assert feed(mut b, 'lossy', 0, 1, true) == 1
+	assert feed(mut b, 'lossy', 0, 49, false) == 49
+	for round in 1 .. 6 {
+		assert feed(mut b, 'lossy', round, 50, false) == 50
+	}
+	assert b.trips().len == 0
+}
+
+fn test_a_drop_in_the_link_costs_a_live_target_one_round_at_most() {
+	// A round queries a pair's domains back to back, so a link that drops for
+	// ten seconds at the start looks, to the breaker, exactly like a dead
+	// target. It must come back on the next round.
+	mut b := Breaker{}
+
+	assert feed(mut b, 'live', 0, 50, false) == breaker_misses
+	assert feed(mut b, 'live', 1, 50, true) == 50
+	assert feed(mut b, 'live', 2, 50, false) == 50
+
+	trips := b.trips()
+	assert trips.len == 1
+	assert trips[0].recovered
+}
+
+fn test_a_refusal_is_an_answer() {
+	// The caller records a REFUSED rcode as answered: a resolver that declines
+	// is there, and is reported as refused rather than unreachable.
+	mut b := Breaker{}
+
+	b.record('refuser', 'warm', 0, true)
+	assert feed(mut b, 'refuser', 0, 50, false) == 50
+}
+
+fn test_the_breaker_keeps_pairs_apart() {
+	// A resolver that drops UDP can still answer over DoT.
+	mut b := Breaker{}
+
+	assert feed(mut b, 'split', 0, 50, false) == breaker_misses
+	assert b.allow('split', 'dot_warm', 0)
+	assert b.allow('other', 'warm', 0)
+}
+
+fn test_misses_below_the_threshold_suspend_nothing() {
+	mut b := Breaker{}
+
+	assert feed(mut b, 'slow', 0, breaker_misses - 1, false) == breaker_misses - 1
+	assert b.allow('slow', 'warm', 0)
+	assert b.trips().len == 0
+}

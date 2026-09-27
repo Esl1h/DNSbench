@@ -177,3 +177,93 @@ pub fn jitter_factor() f64 {
 pub fn expected_samples(rounds int, domains int) int {
 	return rounds * domains
 }
+
+// breaker_misses is how many unanswered queries in a row suspend a
+// (provider, probe) pair that has never answered. docs/METHODOLOGY.md § Give up
+// on silence.
+pub const breaker_misses = 5
+
+// Breaker stops the plan waiting out a full timeout on every query to a target
+// that is not there. The walk is sequential, so each unanswered query stalls the
+// whole run for its timeout: one dead system resolver cost ten minutes of a
+// thirty-minute run.
+//
+// It only ever acts on a pair that has never answered, so a lossy provider,
+// whose loss is the finding, is measured in full. And a trip suspends the pair
+// for the rest of its round rather than for good: a round queries each pair's
+// domains back to back, so a ten-second drop in the link would otherwise read
+// as a dead resolver. Each later round spends one query to find out.
+//
+// Like Pacer it holds no clock and no socket, so it is tested exactly.
+pub struct Breaker {
+mut:
+	pairs map[string]BreakerPair
+}
+
+struct BreakerPair {
+mut:
+	misses   int
+	answered bool
+	tripped  bool
+	// round is the last round the pair was tried in while tripped, so it gets
+	// exactly one query per round.
+	round int
+}
+
+// BreakerTrip names a pair the breaker suspended, and whether it answered
+// afterwards.
+pub struct BreakerTrip {
+pub:
+	provider_key string
+	probe        string
+	recovered    bool
+}
+
+// allow says whether the step may be sent.
+pub fn (mut b Breaker) allow(key string, probe string, round int) bool {
+	id := '${key}/${probe}'
+	mut pair := b.pairs[id] or { return true }
+	if !pair.tripped {
+		return true
+	}
+	if round > pair.round {
+		pair.round = round
+		b.pairs[id] = pair
+		return true
+	}
+	return false
+}
+
+// record takes the outcome of a step that was sent. Any answer counts,
+// including a refusal: a resolver that says no is there.
+pub fn (mut b Breaker) record(key string, probe string, round int, answered bool) {
+	id := '${key}/${probe}'
+	mut pair := b.pairs[id] or { BreakerPair{} }
+	if answered {
+		pair.answered = true
+		pair.tripped = false
+	} else if !pair.answered {
+		pair.misses++
+		if !pair.tripped && pair.misses >= breaker_misses {
+			pair.tripped = true
+			pair.round = round
+		}
+	}
+	b.pairs[id] = pair
+}
+
+// trips lists every pair the breaker suspended during the run.
+pub fn (b Breaker) trips() []BreakerTrip {
+	mut out := []BreakerTrip{}
+	for id, pair in b.pairs {
+		if pair.misses < breaker_misses {
+			continue
+		}
+		out << BreakerTrip{
+			provider_key: id.all_before_last('/')
+			probe: id.all_after_last('/')
+			recovered: pair.answered
+		}
+	}
+	return out
+}

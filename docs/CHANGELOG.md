@@ -22,6 +22,12 @@ comparability and `history` must be able to detect it.
   `docs/RELEASING.md` § Reproducibility was updated.
 
 ### Added
+- A (provider, probe) pair that has never answered is suspended for the rest of its round after
+  5 consecutive unanswered queries, and retried once per later round. The plan walks one query
+  at a time, so a dead target used to stall the run for every timeout in the plan: two
+  unreachable system resolvers took 20 minutes of a 30-minute default run. A black-hole
+  provider now costs about 20 s. Any answer disarms it for good, so partial loss is still
+  measured in full. `docs/METHODOLOGY.md` § Give up on silence.
 - `-d doh_h2` opt-in build: DoH over HTTP/2 through libcurl (`libcurl-devel` or equivalent needed
   at build time, nothing beyond the shared library at runtime), `make build CURL=1`. Quad9
   answers HTTP/1.1 with a 505 to every request; the `doh` probe now recovers a real measurement
