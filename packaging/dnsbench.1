@@ -138,9 +138,9 @@ Plain text in the TUI, as the \fBNO_COLOR\fR environment variable does.
 Default is detected.
 .TP
 .B \-\-no\-geo
-Do not look up the public address, the ASN or the region. The run reports
-\fBregion: global\fR and a null ASN, and sends no packet other than the
-measurement.
+Do not look up the public address, the ASN or the region. The ASN is null,
+the region falls back to the time zone and then to \fBglobal\fR, and no packet
+is sent other than the measurement.
 .TP
 .B \-\-force
 Measure even with a tunnel interface up. Without it the run refuses, because
@@ -286,7 +286,9 @@ resolver does. Only this variant feeds the score.
 DNS over HTTPS, RFC 8484, over HTTP/1.1. Every result records
 \fBhttp_version\fR, because an HTTP/1.1 measurement is not comparable to a
 browser's real HTTP/2 behaviour. An endpoint that serves HTTP/2 only is
-recorded as refusing, never as unreachable.
+recorded as refusing, never as unreachable, unless the binary was built with
+\fBmake build CURL=1\fR: that build retries such an endpoint over HTTP/2
+through libcurl and records \fBhttp_version\fR 2.
 .TP
 .B dnssec
 Asks a deliberately broken zone twice, once ordinarily and once with the
@@ -296,6 +298,13 @@ answers neither way is unknown rather than failing.
 .B filter
 Asks for an advertising domain and reads whether the answer is a resolution or
 a block.
+.PP
+Queries are sent one at a time, so a target that never answers would cost a
+full timeout for every query planned for it. A provider and probe pair that
+has never answered is suspended after five unanswered queries for the rest of
+the round, and tried once per round after that; any answer, a refusal
+included, returns it to the plan for good. Each suspension is reported as a
+warning.
 .SH EXIT STATUS
 .TP
 .B 0

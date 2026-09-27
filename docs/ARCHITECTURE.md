@@ -279,8 +279,8 @@ address resolved to the registry data describing it, and the answer even names t
 the allocation.
 
 The public address itself never reaches the output. It identifies a subscriber; the ASN
-identifies a network, which is the part history needs. `--no-geo` skips the whole step and the
-run reports `region: global` with a null ASN.
+identifies a network, which is the part history needs. `--no-geo` skips the whole step: the ASN
+is null and the cascade carries on to the timezone heuristic, then to `global`.
 
 Under a VPN this detects the exit node's region — **which is correct**. Your CDN mapping and
 your realistic domain mix are those of the exit node, not of your timezone.

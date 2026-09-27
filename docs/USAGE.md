@@ -356,6 +356,11 @@ make build CURL=1
   `/etc/ssl/certs/ca-certificates.crt` or `/etc/pki/tls/certs/ca-bundle.crt`.
 - **A provider shows `refused` on DoH**: it probably requires HTTP/2; see above.
 - **Rows marked `low_n`**: raise `--rounds`.
+- **"no answer to the first 5 queries, stopped waiting on it for the round"**: that provider
+  and probe never answered, so the run stopped spending a full timeout on every query to it
+  and tries it once per round instead. Usually a system resolver the link cannot reach; check
+  it with `dig @<address> example.com`.
+  [METHODOLOGY.md § Give up on silence](METHODOLOGY.md#give-up-on-silence) has the rule.
 - **`dns_interception` set in the output**: two independent address queries disagreed, which
   means something on the path is rewriting DNS. The run still completes; every plaintext
   number is suspect.
