@@ -20,6 +20,9 @@ comparability and `history` must be able to detect it.
   Verified locally: `cbf4e85` + `9d047035` bootstraps clean and the full test
   suite passes under it. Reproducing v0.1.0 artifacts needs the same pin;
   `docs/RELEASING.md` § Reproducibility was updated.
+- The plain table's PROVIDER column grows to fit the longest label. A system resolver named by
+  its IPv6 address overran the 20-character column and pushed its row's figures out from
+  under their headers.
 
 ### Added
 - A (provider, probe) pair that has never answered is suspended for the rest of its round after
