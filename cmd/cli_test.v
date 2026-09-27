@@ -120,6 +120,26 @@ fn test_an_unknown_option_is_refused_rather_than_ignored() {
 	}
 }
 
+fn test_the_help_lists_every_option_the_parser_accepts() {
+	// --near was accepted, documented in the man page, and missing here: the
+	// flag list is the one users are told to trust.
+	text := usage_text()
+	for option in value_options {
+		assert text.contains('  ${option} <'), '${option} missing from --help'
+	}
+	for option in standalone_options {
+		assert text.contains('  ${option} '), '${option} missing from --help'
+	}
+}
+
+fn test_the_help_lists_every_exit_status() {
+	text := usage_text()
+	for code in [store.exit_ok, store.exit_measurement_error, store.exit_usage,
+		store.exit_no_provider_reachable, store.exit_catalog_verification] {
+		assert text.contains(' ${code} '), 'exit ${code} missing from --help'
+	}
+}
+
 fn test_the_same_seed_value_gives_the_same_seed_pair() ! {
 	a := parse_args(['--seed', '42'])!
 	b := parse_args(['--seed', '42'])!

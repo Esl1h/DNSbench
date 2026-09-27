@@ -101,7 +101,7 @@ fn main() {
 	opts := parse_args(args) or {
 		eprintln(err.msg())
 		eprintln('')
-		usage()
+		eprintln(usage_text())
 		exit(store.exit_usage)
 	}
 
@@ -565,45 +565,55 @@ fn version_line() string {
 	return 'dnsbench ${tool_version} (${tool_commit})'
 }
 
-fn usage() {
-	eprintln('usage: dnsbench [options]')
-	eprintln('       dnsbench update             fetch and verify the DNSCrypt catalog')
-	eprintln('       dnsbench history [options]  read a JSONL history file back')
-	eprintln('')
-	eprintln('  --profile <name>   ${core.profiles.keys().join(', ')}  (default: balanced)')
-	eprintln('  --only <keys>      comma-separated provider keys')
-	eprintln('  --rounds <n>       measured rounds per provider (default: 5)')
-	eprintln('  --probes <names>   warm, tcp, cold, ecs, dot-fresh, dot-warm, doh, dnssec, filter')
-	eprintln('                     (default: warm)')
-	eprintln('  --format <name>    table, json, csv, markdown  (default: table)')
-	eprintln('  --history <path>   append the run to a JSONL history file')
-	eprintln('  --timeout <ms>     per-query timeout (default: 2000)')
-	eprintln('  --cold-zone <zone> wildcard zone for the cold probe')
-	eprintln('  --catalog <name>   embedded, dnscrypt  (default: embedded)')
-	eprintln('  --require <tags>   comma-separated catalog tags, plus "filtering" for the')
-	eprintln('                     measured ad-filtering verdict (needs the filter probe)')
-	eprintln('  --ca-bundle <path> CA bundle for DoT, overriding the system cascade')
-	eprintln('  --tui              watch the run in a full-screen terminal interface')
-	eprintln('  --palette <name>   ${known_palettes.join(', ')}  (TUI only, default: default)')
-	eprintln('  --no-color         plain text in the TUI, as NO_COLOR does')
-	eprintln('  --region <code>    ${core.known_regions.join(', ')}  (default: detected)')
-	eprintln('  --no-geo           do not look up the public address, ASN or region')
-	eprintln('  --force            measure even with a tunnel interface up')
-	eprintln('  --seed <n>         fix the shuffle, for a reproducible plan')
-	eprintln('  --watch <dur>      repeat the run every <n>s, <n>m, <n>h, <n>d or <n>w')
-	eprintln('  --watch-count <n>  stop after n measurements (default: forever)')
-	eprintln("  --alert-edge <ms>  --watch alerts when a provider's edge penalty passes this")
-	eprintln('  -V, --version')
-	eprintln('  -h, --help')
-	eprintln('')
-	eprintln('  dnsbench history options:')
-	eprintln('  --last <dur>       only runs within this window: <n>h, <n>d, <n>w, ...')
-	eprintln('  --asn <asn>        only this network, e.g. AS27699')
-	eprintln('  --provider <key>   only this provider')
-	eprintln('  --plot             sparkline of p50 over time; needs --provider')
-	eprintln('  --file <path>      history file to read (default: \$XDG_DATA_HOME/dnsbench/runs.jsonl)')
-	eprintln('')
-	eprintln('Exit: 0 ok, 1 measured with errors, 2 usage, 3 nothing reachable.')
+// usage_text is the flag list. -h prints it to stdout and exits 0, because help
+// that was asked for is not an error and should page through `| less`; a usage
+// error prints it to stderr and exits 2.
+fn usage_text() string {
+	return [
+		'usage: dnsbench [options]',
+		'       dnsbench update             fetch and verify the DNSCrypt catalog',
+		'       dnsbench history [options]  read a JSONL history file back',
+		'',
+		'  --profile <name>   ${core.profiles.keys().join(', ')}  (default: balanced)',
+		'  --only <keys>      comma-separated provider keys',
+		'  --rounds <n>       measured rounds per provider (default: 5)',
+		'  --probes <names>   warm, tcp, cold, ecs, dot-fresh, dot-warm, doh, dnssec, filter',
+		'                     (default: warm)',
+		'  --format <name>    table, json, csv, markdown  (default: table)',
+		'  --history <path>   append the run to a JSONL history file',
+		'  --timeout <ms>     per-query timeout (default: 2000)',
+		'  --cold-zone <zone> wildcard zone for the cold probe',
+		'  --catalog <name>   embedded, dnscrypt  (default: embedded)',
+		'  --require <tags>   comma-separated catalog tags, plus "filtering" for the',
+		'                     measured ad-filtering verdict (needs the filter probe)',
+		'  --near             with --catalog dnscrypt, keep only the ${catalog.near_default_keep} fastest reachable',
+		'  --ca-bundle <path> CA bundle for DoT and DoH, overriding the system cascade',
+		'  --tui              watch the run in a full-screen terminal interface',
+		'  --palette <name>   ${known_palettes.join(', ')}  (TUI only, default: default)',
+		'  --no-color         plain text in the TUI, as NO_COLOR does',
+		'  --region <code>    ${core.known_regions.join(', ')}  (default: detected)',
+		'  --no-geo           do not look up the public address, ASN or region',
+		'  --force            measure even with a tunnel interface up',
+		'  --seed <n>         fix the shuffle, for a reproducible plan',
+		'  --watch <dur>      repeat the run every <n>s, <n>m, <n>h, <n>d or <n>w',
+		'  --watch-count <n>  stop after n measurements (default: forever)',
+		"  --alert-edge <ms>  --watch alerts when a provider's edge penalty passes this",
+		'  -V, --version',
+		'  -h, --help',
+		'',
+		'  dnsbench history options:',
+		'  --last <dur>       only runs within this window: <n>h, <n>d, <n>w, ...',
+		'  --asn <asn>        only this network, e.g. AS27699',
+		'  --provider <key>   only this provider',
+		'  --plot             sparkline of p50 over time; needs --provider',
+		'  --file <path>      history file to read (default: \$XDG_DATA_HOME/dnsbench/runs.jsonl)',
+		'',
+		'Exit: 0 ok, 1 measured with errors, 2 usage, 3 nothing reachable,',
+		'      4 catalog verification failed on update.',
+		'',
+		'Full reference: man dnsbench. Guide with examples:',
+		'https://github.com/Esl1h/DNSbench/blob/main/docs/USAGE.md',
+	].join('\n')
 }
 
 // value_options are the flags that take an argument. standalone_options and the
@@ -621,8 +631,8 @@ fn parse_args(args []string) !Options {
 	for i < args.len {
 		arg := args[i]
 		if arg in ['-h', '--help'] {
-			usage()
-			exit(store.exit_usage)
+			println(usage_text())
+			exit(store.exit_ok)
 		}
 		if arg in ['-V', '--version'] {
 			println(version_line())
