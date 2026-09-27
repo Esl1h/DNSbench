@@ -15,7 +15,7 @@ env:
   # snapshot can emit calls to builtins the pinned V tree does not have and
   # need more memory to compile cmd/v than the pinned compiler's own build
   # allows, and `make -C`'s latest_vc target pulls master whichever pin is
-  # used. 9d047035 is the 2026-09-01 snapshot that pairs with c-dog857; pick
+  # used. 9d047035 is the 2026-09-01 snapshot that pairs with cbf4e85; pick
   # the newest one that still bootstraps the V_COMMIT of the day by finding
   # its "[v:master] <sha>" label in the vc log.
   VC_COMMIT: 9d047035
