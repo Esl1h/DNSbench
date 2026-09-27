@@ -364,3 +364,19 @@ fn test_a_run_without_the_cold_probe_gets_no_zone() ! {
 	o := with_cold_zone(parse_args(['--probes', 'warm,ecs'])!)
 	assert o.cold_zone == ''
 }
+
+fn test_progress_counts_queries_and_carries_the_pace_forward() {
+	assert progress_line(1500, 6000, 150.0) == 'dnsbench: 1500/6000 queries (25%), 2m30s elapsed, about 7m30s left'
+}
+
+fn test_progress_gives_no_estimate_before_there_is_a_pace() {
+	// Under a second of history, or nothing done yet, any estimate is noise.
+	assert progress_line(0, 6000, 0.0) == 'dnsbench: 0/6000 queries (0%), 0s elapsed'
+	assert progress_line(40, 6000, 0.4) == 'dnsbench: 40/6000 queries (0%), 0s elapsed'
+}
+
+fn test_short_durations_read_as_minutes_and_seconds() {
+	assert short_duration(9.4) == '9s'
+	assert short_duration(59.6) == '1m00s'
+	assert short_duration(605.0) == '10m05s'
+}

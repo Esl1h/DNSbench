@@ -409,6 +409,9 @@ dnsbench history \-\-provider quad9 \-\-plot
 .EE
 .RE
 .SH NOTES
+When standard error is a terminal, a run shows a single progress line there
+and erases it before printing the result; otherwise nothing is written to it.
+.PP
 .B dnsbench
 does not change your DNS settings, does not phone home, and carries no
 telemetry. Besides the measurement it makes four DNS queries at startup to

@@ -290,6 +290,10 @@ and prints the plain table instead. [TUI.md](TUI.md) has the layout.
 
 ## Scripting and cron
 
+When stderr is a terminal, a run shows one progress line there, queries done, elapsed and an
+estimate of what is left, and erases it before printing the result. When stderr is a pipe or
+a file, nothing is written to it, so cron and CI output is unchanged.
+
 Exit statuses:
 
 - `0`: run completed

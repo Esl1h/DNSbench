@@ -141,8 +141,10 @@ fn main() {
 		}
 	}
 
-	mut watcher := Watcher(SilentWatcher{})
+	mut progress := &ProgressWatcher{}
+	mut watcher := if os.is_atty(2) == 1 { Watcher(progress) } else { Watcher(SilentWatcher{}) }
 	result := run(opts, mut watcher) or {
+		progress.clear()
 		eprintln('dnsbench: ${err.msg()}')
 		exit(store.exit_measurement_error)
 	}
@@ -188,8 +190,10 @@ fn run_watch(opts Options) {
 		eprintln('--- dnsbench watch: run ${iteration} at ${time.now().format_rfc3339()} ---')
 		done := opts.watch_count > 0 && iteration >= opts.watch_count
 
-		mut watcher := Watcher(SilentWatcher{})
+		mut progress := &ProgressWatcher{}
+		mut watcher := if os.is_atty(2) == 1 { Watcher(progress) } else { Watcher(SilentWatcher{}) }
 		result := run(opts, mut watcher) or {
+			progress.clear()
 			eprintln('dnsbench: ${err.msg()}')
 			if done {
 				return
@@ -1476,6 +1480,69 @@ fn (mut w SilentWatcher) tick(_step int, _total int, _subjects []Subject) bool {
 }
 
 fn (mut w SilentWatcher) finish(_result store.RunResult, _samples []core.Samples, _best_rtt ?f64) {
+}
+
+// ProgressWatcher is what the plain CLI passes when stderr is a terminal: one
+// line, rewritten in place, because a default run takes minutes and printed
+// nothing until the end, which is indistinguishable from a hang. Nothing is
+// written when stderr is a pipe or a file, so cron and CI see no difference.
+struct ProgressWatcher {
+mut:
+	started   time.Time
+	last_draw time.Time
+	drawn     bool
+}
+
+// progress_interval caps the redraws: a step can take under a millisecond.
+const progress_interval = 250 * time.millisecond
+
+fn (mut w ProgressWatcher) begin(_ctx RunContext) {
+	w.started = time.now()
+}
+
+fn (mut w ProgressWatcher) tick(step int, total int, _subjects []Subject) bool {
+	now := time.now()
+	if w.drawn && now - w.last_draw < progress_interval {
+		return true
+	}
+	w.last_draw = now
+	w.drawn = true
+	elapsed := f64((now - w.started).milliseconds()) / 1000.0
+	eprint('\r' + progress_line(step, total, elapsed) + '\x1b[K')
+	return true
+}
+
+fn (mut w ProgressWatcher) finish(_result store.RunResult, _samples []core.Samples, _best_rtt ?f64) {
+	w.clear()
+}
+
+// clear erases the line, so the table or an error starts on a clean one.
+fn (mut w ProgressWatcher) clear() {
+	if w.drawn {
+		eprint('\r\x1b[K')
+		w.drawn = false
+	}
+}
+
+// progress_line says how far the plan is. The estimate is the pace so far
+// carried forward, so it overstates what is left once a silent target has been
+// suspended; it is never shown before there is a second of pace to go on.
+fn progress_line(done int, total int, elapsed_s f64) string {
+	percent := if total > 0 { done * 100 / total } else { 0 }
+	mut line := 'dnsbench: ${done}/${total} queries (${percent}%), ${short_duration(elapsed_s)} elapsed'
+	if done > 0 && elapsed_s >= 1.0 && done < total {
+		left := elapsed_s / f64(done) * f64(total - done)
+		line += ', about ${short_duration(left)} left'
+	}
+	return line
+}
+
+fn short_duration(seconds f64) string {
+	s := int(seconds + 0.5)
+	if s < 60 {
+		return '${s}s'
+	}
+	return '${s / 60}m${s % 60:02d}s'
 }
 
 // execute walks the plan and fills in the samples.

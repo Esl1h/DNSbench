@@ -30,6 +30,9 @@ comparability and `history` must be able to detect it.
   `cold_mode: off`, so existing history stays comparable.
 
 ### Added
+- A progress line on stderr for the plain CLI, only when stderr is a terminal: queries done,
+  elapsed, and an estimate of what is left, erased before the result is printed. A default
+  run takes minutes and used to print nothing until the end.
 - A (provider, probe) pair that has never answered is suspended for the rest of its round after
   5 consecutive unanswered queries, and retried once per later round. The plan walks one query
   at a time, so a dead target used to stall the run for every timeout in the plan: two

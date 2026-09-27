@@ -81,10 +81,11 @@ dnsbench/
 ```
 
 `cmd/tui` follows the run through a `Watcher`, an interface declared in the command layer and
-implemented twice: once as a no-op for the CLI, once by the TUI. The core never sees it, which
-is design constraint 3 above holding. The measurement runs on its own thread and hands the
-frame loop finished `RunResult` snapshots down a channel about once every 700 ms; the CLI's
-implementation does nothing at all and prints once at the end.
+implemented three times: a no-op for the CLI when stderr is not a terminal, a one-line
+progress counter on stderr when it is, and the TUI. The core never sees it, which is design
+constraint 3 above holding. The measurement runs on its own thread and hands the frame loop
+finished `RunResult` snapshots down a channel about once every 700 ms; the CLI's
+implementations print nothing to stdout until the end.
 
 Snapshots rather than individual samples, and a channel rather than shared state, because the
 two threads then share nothing that is being written while it is read. The samples travel with
