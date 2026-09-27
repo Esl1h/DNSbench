@@ -32,11 +32,22 @@ be able to detect it.
 2. **Move `docs/CHANGELOG.md`'s `[Unreleased]` section under the new version**, with
    the date.
 3. **`make check`**, then commit both.
-4. **Tag and push.** `git tag -s v0.1.0 -m 'dnsbench 0.1.0' && git push --tags`.
+4. **Rehearse.** `git push origin HEAD:release-check --force` runs the release
+   workflow's builds on both architectures without publishing anything; see
+   § Rehearsing.
+5. **Tag and push.** `git tag -s v0.1.0 -m 'dnsbench 0.1.0' && git push --tags`.
    The tag is signed, like every commit in this repository.
-5. **`.github/workflows/release.yml` does the rest**: it builds each target
+6. **`.github/workflows/release.yml` does the rest**: it builds each target
    natively, statically linked against musl, confirms the binary runs, and
    publishes the artifacts with one `SHA256SUMS` over all of them.
+
+### Rehearsing
+
+A tag is public the moment it is pushed, and the arm64 job runs nowhere else, so
+the first sign of an arm64-only break used to be a failed release. Pushing to the
+`release-check` branch runs the same `build` job for both targets, static-link
+check and `--version` included; the `publish` job runs only for a tag. The
+branch carries no meaning between rehearsals and can be force-pushed.
 
 `make release` cuts the same artifacts for the host architecture alone. It
 refuses on a dirty tree and refuses outside a git checkout, because an artifact
