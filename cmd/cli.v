@@ -2,6 +2,7 @@ module main
 
 import os
 import rand
+import sync.stdatomic
 import time
 import catalog
 import core
@@ -144,20 +145,29 @@ fn main() {
 		}
 	}
 
-	mut progress := &ProgressWatcher{}
-	mut watcher := if os.is_atty(2) == 1 { Watcher(progress) } else { Watcher(SilentWatcher{}) }
+	mut interrupted := on_interrupt()
+	mut cli := &CliWatcher{
+		draw: os.is_atty(2) == 1
+		interrupted: interrupted
+	}
+	mut watcher := Watcher(cli)
 	result := run(opts, mut watcher) or {
-		progress.clear()
+		cli.clear()
+		if partial := cli.partial {
+			// Not appended to history: a partial run is not comparable with the
+			// complete ones it would sit beside.
+			print_result(opts.format, partial)
+			exit(store.exit_code(partial))
+		}
+		if interrupted.load() {
+			eprintln('dnsbench: interrupted during the warm-up pass, before any counted sample; nothing to report')
+			exit(store.exit_measurement_error)
+		}
 		eprintln('dnsbench: ${err.msg()}')
 		exit(store.exit_measurement_error)
 	}
 
-	match opts.format {
-		'json' { print(result.to_json()) }
-		'csv' { print(result.to_csv()) }
-		'markdown' { print(result.to_markdown()) }
-		else { print(result.to_table()) }
-	}
+	print_result(opts.format, result)
 
 	if opts.history != '' {
 		store.append(opts.history, result) or {
@@ -187,30 +197,39 @@ fn run_watch(opts Options) {
 
 	mut iteration := 0
 	mut previous := ?store.RunResult(none)
+	mut interrupted := on_interrupt()
 
 	for {
 		iteration++
 		eprintln('--- dnsbench watch: run ${iteration} at ${time.now().format_rfc3339()} ---')
 		done := opts.watch_count > 0 && iteration >= opts.watch_count
 
-		mut progress := &ProgressWatcher{}
-		mut watcher := if os.is_atty(2) == 1 { Watcher(progress) } else { Watcher(SilentWatcher{}) }
+		mut cli := &CliWatcher{
+			draw: os.is_atty(2) == 1
+			interrupted: interrupted
+		}
+		mut watcher := Watcher(cli)
 		result := run(opts, mut watcher) or {
-			progress.clear()
+			cli.clear()
+			if partial := cli.partial {
+				print_result(opts.format, partial)
+				exit(store.exit_code(partial))
+			}
+			if interrupted.load() {
+				eprintln('dnsbench: interrupted during the warm-up pass, before any counted sample; nothing to report')
+				exit(store.exit_measurement_error)
+			}
 			eprintln('dnsbench: ${err.msg()}')
 			if done {
 				return
 			}
-			time.sleep(interval)
+			if !sleep_unless_interrupted(interval, mut interrupted) {
+				exit(store.exit_measurement_error)
+			}
 			continue
 		}
 
-		match opts.format {
-			'json' { print(result.to_json()) }
-			'csv' { print(result.to_csv()) }
-			'markdown' { print(result.to_markdown()) }
-			else { print(result.to_table()) }
-		}
+		print_result(opts.format, result)
 
 		if opts.history != '' {
 			store.append(opts.history, result) or {
@@ -228,7 +247,36 @@ fn run_watch(opts Options) {
 		if done {
 			return
 		}
-		time.sleep(interval)
+		if !sleep_unless_interrupted(interval, mut interrupted) {
+			exit(store.exit_measurement_error)
+		}
+	}
+}
+
+// sleep_unless_interrupted waits out the --watch interval in short slices,
+// because time.sleep resumes after a signal and a Ctrl+C would otherwise wait
+// out up to the whole interval. False means SIGINT arrived.
+fn sleep_unless_interrupted(interval time.Duration, mut interrupted stdatomic.AtomicVal[bool]) bool {
+	slice := 200 * time.millisecond
+	mut left := interval
+	for left > 0 {
+		if interrupted.load() {
+			return false
+		}
+		step := if left < slice { left } else { slice }
+		time.sleep(step)
+		left -= step
+	}
+	return !interrupted.load()
+}
+
+// print_result writes a finished or partial run in the requested format.
+fn print_result(format string, r store.RunResult) {
+	match format {
+		'json' { print(r.to_json()) }
+		'csv' { print(r.to_csv()) }
+		'markdown' { print(r.to_markdown()) }
+		else { print(r.to_table()) }
 	}
 }
 
@@ -992,6 +1040,7 @@ fn run(requested Options, mut watcher Watcher) !store.RunResult {
 		started: started
 		warnings: warnings
 		domain_set_id: domain_set.id
+		opts: opts
 	})
 	trips := execute(plan, mut subjects, opts, ca_bundle, mut watcher)!
 	for t in trips {
@@ -1504,61 +1553,104 @@ struct RunContext {
 	started       time.Time
 	warnings      []store.Warning
 	domain_set_id string
+	// opts are the options the run actually uses: the cold zone and the
+	// --quick rounds are settled inside run(), so the ones a frontend was
+	// handed are not enough to describe a partial result.
+	opts Options
 }
 
-// SilentWatcher is what the plain CLI passes. A run nobody is watching pays one
-// call per step for it and nothing else.
-struct SilentWatcher {}
-
-fn (mut w SilentWatcher) begin(_ctx RunContext) {}
-
-fn (mut w SilentWatcher) tick(_step int, _total int, _subjects []Subject) bool {
-	return true
-}
-
-fn (mut w SilentWatcher) finish(_result store.RunResult, _samples []core.Samples, _best_rtt ?f64) {
-}
-
-// ProgressWatcher is what the plain CLI passes when stderr is a terminal: one
-// line, rewritten in place, because a default run takes minutes and printed
-// nothing until the end, which is indistinguishable from a hang. Nothing is
-// written when stderr is a pipe or a file, so cron and CI see no difference.
-struct ProgressWatcher {
+// CliWatcher is what the plain CLI passes. It draws one progress line on
+// stderr when stderr is a terminal, because a default run takes minutes and
+// printed nothing until the end, which is indistinguishable from a hang;
+// nothing is written when stderr is a pipe or a file, so cron and CI see no
+// difference. And it notices SIGINT: docs/ARCHITECTURE.md § Failure policy
+// says an interrupted run flushes what it measured with `complete: false`.
+struct CliWatcher {
+	draw bool
 mut:
-	started   time.Time
-	last_draw time.Time
-	drawn     bool
+	interrupted &stdatomic.AtomicVal[bool] = unsafe { nil }
+	ctx         RunContext
+	started     bool
+	last_draw   time.Time
+	drawn       bool
+	// partial is the run as it stood when SIGINT arrived.
+	partial ?store.RunResult
 }
 
 // progress_interval caps the redraws: a step can take under a millisecond.
 const progress_interval = 250 * time.millisecond
 
-fn (mut w ProgressWatcher) begin(_ctx RunContext) {
-	w.started = time.now()
+fn (mut w CliWatcher) begin(ctx RunContext) {
+	w.ctx = ctx
+	w.started = true
 }
 
-fn (mut w ProgressWatcher) tick(step int, total int, _subjects []Subject) bool {
+fn (mut w CliWatcher) tick(step int, total int, subjects []Subject) bool {
+	if w.interrupted != unsafe { nil } && w.interrupted.load() {
+		// During the discarded warm-up pass nothing has been counted, and a
+		// snapshot would report every provider unreachable, the link included.
+		if subjects.any(it.attempts.values().any(it > 0)) {
+			w.partial = w.snapshot(subjects)
+		}
+		w.clear()
+		return false
+	}
+	if !w.draw {
+		return true
+	}
 	now := time.now()
 	if w.drawn && now - w.last_draw < progress_interval {
 		return true
 	}
 	w.last_draw = now
 	w.drawn = true
-	elapsed := f64((now - w.started).milliseconds()) / 1000.0
+	elapsed := f64((now - w.ctx.started).milliseconds()) / 1000.0
 	eprint('\r' + progress_line(step, total, elapsed) + '\x1b[K')
 	return true
 }
 
-fn (mut w ProgressWatcher) finish(_result store.RunResult, _samples []core.Samples, _best_rtt ?f64) {
+fn (mut w CliWatcher) finish(_result store.RunResult, _samples []core.Samples, _best_rtt ?f64) {
 	w.clear()
 }
 
 // clear erases the line, so the table or an error starts on a clean one.
-fn (mut w ProgressWatcher) clear() {
+fn (mut w CliWatcher) clear() {
 	if w.drawn {
 		eprint('\r\x1b[K')
 		w.drawn = false
 	}
+}
+
+// snapshot is the run as it stands, the same assembly the TUI's live view
+// makes. The edge and capability probes run after the plan, so their columns
+// are absent rather than provisional.
+fn (w CliWatcher) snapshot(subjects []Subject) store.RunResult {
+	duration := f64(time.since(w.ctx.started).microseconds()) / 1_000_000.0
+	partial := assemble(subjects, map[string]core.EdgePenalty{}, map[string]Capability{}, none, w.ctx.opts, w.ctx.net, w.ctx.origin, w.ctx.cat, w.ctx.started, duration, w.ctx.warnings, core.BootstrapSpec{ seed: w.ctx.opts.seed }, w.ctx.domain_set_id)
+	return store.RunResult{
+		...partial
+		run: store.Run{
+			...partial.run
+			complete: false
+		}
+	}
+}
+
+fn C._exit(code int)
+
+// on_interrupt makes the first SIGINT a request to stop and flush, and the
+// second an immediate exit, for when the first lands in a phase that does not
+// pass through tick. An atomic rather than a channel: the handler runs on
+// whatever thread the signal lands on, possibly one holding the channel's lock.
+fn on_interrupt() &stdatomic.AtomicVal[bool] {
+	mut flag := stdatomic.new_atomic(false)
+	os.signal_opt(.int, fn [mut flag] (_ os.Signal) {
+		if flag.load() {
+			C._exit(130)
+		}
+		flag.store(true)
+	}) or {}
+	return flag
 }
 
 // progress_line says how far the plan is. The estimate is the pace so far

@@ -130,9 +130,9 @@ fn (mut w LiveWatcher) emit(subjects []Subject, step int, total int, final bool)
 	edge := map[string]core.EdgePenalty{}
 	capabilities := map[string]Capability{}
 	duration := f64(time.since(w.ctx.started).microseconds()) / 1_000_000.0
-	partial := assemble(subjects, edge, capabilities, none, w.opts, w.ctx.net, w.ctx.origin, w.ctx.cat, w.ctx.started, duration, w.ctx.warnings, core.BootstrapSpec{
+	partial := assemble(subjects, edge, capabilities, none, w.ctx.opts, w.ctx.net, w.ctx.origin, w.ctx.cat, w.ctx.started, duration, w.ctx.warnings, core.BootstrapSpec{
 		resamples: tui_live_resamples
-		seed: w.opts.seed
+		seed: w.ctx.opts.seed
 	}, w.ctx.domain_set_id)
 
 	// A snapshot that dropped because the drawing thread was busy is not worth

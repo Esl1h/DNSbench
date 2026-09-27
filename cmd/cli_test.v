@@ -3,6 +3,8 @@ module main
 import catalog
 import core
 import store
+import sync.stdatomic
+import time
 
 // Flag parsing is where a typo becomes a wrong measurement rather than an
 // error, so the validation is asserted rather than trusted.
@@ -410,4 +412,43 @@ fn test_quick_rounds_are_the_fewest_that_still_rank() {
 		assert quick_rounds(n) * n >= core.min_ranked_samples, '${n} domains'
 		assert (quick_rounds(n) - 1) * n < core.min_ranked_samples, '${n} domains: not the fewest'
 	}
+}
+
+fn test_an_interrupt_stops_the_walk() {
+	mut flag := stdatomic.new_atomic(true)
+	mut w := CliWatcher{
+		interrupted: flag
+	}
+	assert !w.tick(0, 10, []Subject{})
+}
+
+fn test_an_interrupt_before_any_counted_sample_leaves_nothing_to_report() {
+	// The warm-up pass is discarded, so a snapshot taken during it would call
+	// every provider unreachable, the working ones included.
+	mut flag := stdatomic.new_atomic(true)
+	mut w := CliWatcher{
+		interrupted: flag
+	}
+	warming := [Subject{
+		key: 'local'
+	}]
+	assert !w.tick(3, 100, warming)
+	assert w.partial == none
+}
+
+fn test_no_interrupt_lets_the_walk_go_on() {
+	mut flag := stdatomic.new_atomic(false)
+	mut w := CliWatcher{
+		interrupted: flag
+	}
+	assert w.tick(0, 10, []Subject{})
+}
+
+fn test_the_watch_interval_ends_early_on_an_interrupt() {
+	// time.sleep resumes after a signal; a Ctrl+C must not wait out the
+	// whole --watch interval.
+	mut flag := stdatomic.new_atomic(true)
+	started := time.now()
+	assert !sleep_unless_interrupted(time.hour, mut flag)
+	assert time.since(started) < time.second
 }

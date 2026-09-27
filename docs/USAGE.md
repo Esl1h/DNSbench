@@ -301,6 +301,11 @@ When stderr is a terminal, a run shows one progress line there, queries done, el
 estimate of what is left, and erases it before printing the result. When stderr is a pipe or
 a file, nothing is written to it, so cron and CI output is unchanged.
 
+Ctrl+C stops a run and prints what it measured so far, marked as partial (`complete: false`
+in JSON, `INTERRUPTED` in the table), with exit status 1. A partial run is not appended to
+history. Interrupted during the discarded warm-up pass, there is nothing counted yet to print.
+A second Ctrl+C exits at once. Under `--watch`, Ctrl+C also ends the wait between runs.
+
 Exit statuses:
 
 - `0`: run completed

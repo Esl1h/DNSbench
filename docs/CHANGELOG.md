@@ -28,6 +28,11 @@ comparability and `history` must be able to detect it.
   `docs/METHODOLOGY.md` makes `own`, the project zone, the default mode. It now asks under
   `probe.dnsbench.esli.blog` unless told otherwise. A run without `cold` still records
   `cold_mode: off`, so existing history stays comparable.
+- Ctrl+C killed a plain CLI run and lost everything measured, although
+  `docs/ARCHITECTURE.md` § Failure policy specifies flushing partial results with
+  `complete: false` and exit 1. It now does, for single runs and under `--watch`, whose wait
+  between runs also ends at once instead of sleeping out the interval. A second Ctrl+C exits
+  immediately.
 
 ### Added
 - `--quick`: `warm` and `ecs` only, in the fewest rounds that still clear the 30-sample
