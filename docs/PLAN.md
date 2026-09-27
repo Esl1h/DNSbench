@@ -251,16 +251,20 @@ Layer 2 is complete.
 ### Done: transparent DNS interception detection
 
 `core/geo.v` already asked `myip.opendns.com @208.67.222.222` for region detection; step 3 now
-also asks `o-o.myaddr.l.google.com TXT @8.8.8.8` and compares the two egress addresses. Both
+also asks `o-o.myaddr.l.google.com TXT @8.8.8.8` and checks the two agree on the client. Both
 queries leave through the same gateway and go to a resolver by IP literal, not through whatever
 the machine is configured to use, so on a link with nothing intercepting DNS traffic they agree.
 A mismatch sets `network.dns_interception` and raises a warning; it does not stop the run, per
 docs/METHODOLOGY.md § Fairness rules' own "report prominently", not "fail loudly" like a
 detected VPN gets.
 
-Google's answer sometimes carries a second TXT string, `edns0-client-subnet <prefix>`, added by
-whatever is between this machine and 8.8.8.8; `first_plain_txt` skips it. Verified against a
-live query.
+Google's answer is two TXT strings, and the first version of this read the wrong one. The plain
+string is the address of whoever asked Google's authoritative server, which through 8.8.8.8 is
+Google's own recursive resolver: a live query returned `192.178.95.23`. This machine appears
+only in the second string, `edns0-client-subnet <prefix>`, the client subnet Google's resolver
+forwards. Comparing the plain string with OpenDNS's answer therefore flagged interception on
+practically every run. The check is now whether OpenDNS's address lies inside that prefix; no
+annotation, or a prefix that is not IPv4, is no evidence either way.
 
 ### Done: `history`
 

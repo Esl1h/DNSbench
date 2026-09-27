@@ -971,7 +971,7 @@ fn run(requested Options, mut watcher Watcher) !store.RunResult {
 		warnings << store.Warning{
 			level: 'warn'
 			key: 'network'
-			message: 'transparent DNS interception detected: a direct query to 8.8.8.8 and a direct query to OpenDNS reported different egress addresses. Something between this machine and those resolvers may be redirecting DNS traffic'
+			message: 'transparent DNS interception detected: the address OpenDNS saw this query come from lies outside the client subnet 8.8.8.8 reported. Something between this machine and those resolvers may be redirecting DNS traffic'
 		}
 	}
 

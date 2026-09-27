@@ -108,31 +108,50 @@ fn test_with_nowhere_to_ask_the_lookup_is_skipped_rather_than_guessed() {
 	assert found.region in known_regions
 }
 
-// The two-string shape is what a live query to 8.8.8.8 actually returned:
-// the address first, an EDNS Client Subnet annotation second, added by
-// something on the path since this tool sends no ECS option itself.
-fn test_the_plain_address_is_picked_over_the_ecs_annotation() {
+// The two-string shape is what a live query to 8.8.8.8 actually returns: the
+// address of Google's own recursive resolver first, then the client subnet it
+// forwarded. The first names Google, not this machine.
+fn test_the_client_subnet_is_read_out_of_the_annotation() {
 	answers := ['172.217.37.25', 'edns0-client-subnet 177.197.83.0/24']
-	assert first_plain_txt(answers)? == '172.217.37.25'
+	assert client_subnet(answers)? == '177.197.83.0/24'
 }
 
-fn test_a_lone_annotation_with_no_plain_address_yields_nothing() {
-	assert first_plain_txt(['edns0-client-subnet 177.197.83.0/24']) == none
+fn test_no_annotation_yields_no_subnet() {
+	assert client_subnet(['172.217.37.25']) == none
+	assert client_subnet([]string{}) == none
 }
 
-fn test_an_empty_answer_set_yields_nothing() {
-	assert first_plain_txt([]string{}) == none
+fn test_an_address_inside_the_client_subnet_is_no_interception() {
+	// The false positive this replaced: OpenDNS's answer compared with the
+	// address of Google's resolver, which never matches.
+	assert interception_detected('177.197.83.41', '177.197.83.0/24') == false
 }
 
-fn test_interception_is_a_disagreement_between_the_two_resolvers() {
-	assert interception_detected('189.46.44.175', '189.46.44.175') == false
-	assert interception_detected('189.46.44.175', '203.0.113.9') == true
+fn test_an_address_outside_the_client_subnet_is_interception() {
+	assert interception_detected('203.0.113.9', '177.197.83.0/24') == true
 }
 
 // A query that never got a usable answer is not evidence of anything, and
 // must not be conflated with the two resolvers actually disagreeing.
-fn test_a_missing_address_on_either_side_is_never_a_mismatch() {
-	assert interception_detected('', '189.46.44.175') == false
-	assert interception_detected('189.46.44.175', '') == false
+fn test_a_missing_or_unreadable_side_is_never_a_mismatch() {
+	assert interception_detected('', '177.197.83.0/24') == false
+	assert interception_detected('177.197.83.41', '') == false
 	assert interception_detected('', '') == false
+	assert interception_detected('177.197.83.41', '2001:db8::/56') == false
+	assert interception_detected('177.197.83.41', 'garbage') == false
+}
+
+fn test_subnet_containment_honours_the_prefix_length() {
+	assert ipv4_in_subnet('198.51.100.200', '198.51.100.0/24')!
+	assert !ipv4_in_subnet('198.51.101.1', '198.51.100.0/24')!
+	assert ipv4_in_subnet('198.51.101.1', '198.51.100.0/23')!
+	assert ipv4_in_subnet('198.51.100.7', '198.51.100.7/32')!
+	assert !ipv4_in_subnet('198.51.100.8', '198.51.100.7/32')!
+	assert ipv4_in_subnet('192.0.2.1', '0.0.0.0/0')!
+	if _ := ipv4_in_subnet('198.51.100.7', '198.51.100.0/33') {
+		assert false
+	}
+	if _ := ipv4_in_subnet('198.51.100.256', '198.51.100.0/24') {
+		assert false
+	}
 }

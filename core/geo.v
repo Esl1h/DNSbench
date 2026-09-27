@@ -248,8 +248,8 @@ fn lookup_origin(spec GeoSpec) !Origin {
 	// evidence of interception either: it is one fewer thing this run could
 	// establish, the same as an unnamed ASN above.
 	mut interception := false
-	if google_ip := google_myaddr_ip(spec.timeout) {
-		interception = interception_detected(ip, google_ip)
+	if subnet := google_client_subnet(spec.timeout) {
+		interception = interception_detected(ip, subnet)
 	}
 
 	return Origin{
@@ -278,43 +278,79 @@ pub fn public_ip(timeout time.Duration) !string {
 	return addresses[0]
 }
 
-// google_myaddr_ip asks 8.8.8.8 what address the query arrived from, the same
-// question public_ip puts to OpenDNS. A real answer carries the address as
-// its own TXT string, and sometimes a second string
-// "edns0-client-subnet <prefix>" when something on the path added an EDNS
-// Client Subnet option to the query; that second string answers a different
-// question and is skipped. Verified against a live query to 8.8.8.8, which
-// returned exactly this shape: the plain address first, the annotation
-// second.
-pub fn google_myaddr_ip(timeout time.Duration) !string {
+// google_client_subnet asks 8.8.8.8 which client the query came from.
+//
+// `o-o.myaddr.l.google.com` answers with the address of whoever asked Google's
+// authoritative server, and through 8.8.8.8 that is Google's own recursive
+// resolver, not this machine: a live query returned "192.178.95.23", a Google
+// address, as the plain string. What names this machine is the second string,
+// "edns0-client-subnet <prefix>", the client subnet Google's resolver forwards.
+// Comparing the plain string with OpenDNS's answer flagged interception on
+// every run.
+pub fn google_client_subnet(timeout time.Duration) !string {
 	answers := ask_txt(google_myaddr_resolver, google_myaddr_name, timeout)!
-	return first_plain_txt(answers) or {
-		error('${google_myaddr_name} answered with no plain address')
+	return client_subnet(answers) or {
+		error('${google_myaddr_name} answered with no client subnet')
 	}
 }
 
-// first_plain_txt returns the first answer that is not an EDNS Client Subnet
-// annotation.
-pub fn first_plain_txt(answers []string) ?string {
+// client_subnet returns the prefix out of the EDNS Client Subnet annotation.
+pub fn client_subnet(answers []string) ?string {
 	for a in answers {
-		if !a.starts_with('edns0-client-subnet') {
-			return a
+		if a.starts_with('edns0-client-subnet ') {
+			return a.all_after('edns0-client-subnet ').trim_space()
 		}
 	}
 	return none
 }
 
-// interception_detected compares the two independent "what is my address"
-// answers. Neither query goes through the machine's configured resolver, and
-// both leave through the same gateway, so on a link with nothing intercepting
-// DNS traffic they agree. A mismatch means one of the two paths was answered
-// by something other than the resolver it was addressed to: docs/METHODOLOGY.md
-// § Fairness rules calls this a security finding, not a measurement caveat.
+// interception_detected asks whether the address OpenDNS saw lies inside the
+// client subnet Google saw. Neither query goes through the machine's
+// configured resolver, and both leave through the same gateway, so on a link
+// with nothing intercepting DNS traffic it does. Outside means one of the two
+// paths was answered by something other than the resolver it was addressed
+// to: docs/METHODOLOGY.md § Fairness rules calls this a security finding, not
+// a measurement caveat.
 //
-// An empty address on either side means that side's query never got a usable
-// answer, which is not evidence of anything and must not read as a mismatch.
-pub fn interception_detected(opendns_ip string, google_ip string) bool {
-	return opendns_ip != '' && google_ip != '' && opendns_ip != google_ip
+// An empty side, or a subnet this can not read, is not evidence of anything
+// and must not read as a mismatch.
+pub fn interception_detected(opendns_ip string, google_subnet string) bool {
+	if opendns_ip == '' || google_subnet == '' {
+		return false
+	}
+	inside := ipv4_in_subnet(opendns_ip, google_subnet) or { return false }
+	return !inside
+}
+
+// ipv4_in_subnet reads "a.b.c.d" and "w.x.y.z/n". Anything else, IPv6
+// included, is an error: the caller treats that as no evidence.
+pub fn ipv4_in_subnet(ip string, cidr string) !bool {
+	addr := ipv4_bits(ip)!
+	network := ipv4_bits(cidr.all_before('/'))!
+	bits := cidr.all_after('/').int()
+	if !cidr.contains('/') || bits < 0 || bits > 32 {
+		return error('"${cidr}" is not an IPv4 prefix')
+	}
+	if bits == 0 {
+		return true
+	}
+	mask := u32(0xffffffff) << u32(32 - bits)
+	return addr & mask == network & mask
+}
+
+fn ipv4_bits(ip string) !u32 {
+	octets := ip.split('.')
+	if octets.len != 4 {
+		return error('"${ip}" is not an IPv4 address')
+	}
+	mut out := u32(0)
+	for o in octets {
+		if o == '' || !o.is_int() || o.int() < 0 || o.int() > 255 {
+			return error('"${ip}" is not an IPv4 address')
+		}
+		out = (out << 8) | u32(o.int())
+	}
+	return out
 }
 
 // reverse_ipv4 turns 189.46.44.175 into 175.44.46.189, which is how the origin

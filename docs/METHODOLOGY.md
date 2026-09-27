@@ -296,7 +296,7 @@ Before measuring, detect and warn:
 | VPN / tun interface up | `ip -o link` for `tun*`, `wg*`, `tailscale*` | Warn; you are measuring the tunnel |
 | Android Private DNS | platform-specific | Warn |
 | Local intercepting proxy | `resolv.conf` is loopback + unexpected process | Inform, label correctly |
-| Transparent DNS hijack | `o-o.myaddr.l.google.com TXT @8.8.8.8` returns unexpected egress | Report prominently |
+| Transparent DNS hijack | The client subnet `o-o.myaddr.l.google.com TXT @8.8.8.8` reports does not contain the address `myip.opendns.com @208.67.222.222` reports | Report prominently |
 
 The last one is a security finding, not a measurement caveat.
 
