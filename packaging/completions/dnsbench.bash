@@ -36,7 +36,7 @@ _dnsbench() {
 		return
 	fi
 	if [[ $COMP_CWORD -eq 1 ]]; then
-		mapfile -t COMPREPLY < <(compgen -W "update history --profile --only --rounds \
+		mapfile -t COMPREPLY < <(compgen -W "update history --profile --only --rounds --quick \
 			--probes --format --history --timeout --cold-zone --ca-bundle --catalog \
 			--require --near --tui --palette --no-color --region --no-geo --force \
 			--seed --watch --watch-count --alert-edge --version --help" -- "$cur")
@@ -86,7 +86,7 @@ _dnsbench() {
 			;;
 	esac
 
-	mapfile -t COMPREPLY < <(compgen -W "--profile --only --rounds --probes --format \
+	mapfile -t COMPREPLY < <(compgen -W "--profile --only --rounds --quick --probes --format \
 		--history --timeout --cold-zone --ca-bundle --catalog --require --near --tui \
 		--palette --no-color --region --no-geo --force --seed --watch --watch-count \
 		--alert-edge --version --help" -- "$cur")

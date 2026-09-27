@@ -38,6 +38,7 @@ _dnsbench() {
 			'--require[tags every measured provider must carry]:tags:' \
 			'--near[reachability pre-pass for --catalog dnscrypt]' \
 			'--rounds[measured rounds per provider]:count:' \
+			'--quick[warm and ecs, fewest rounds that still rank]' \
 			'--probes[which probes to run]:probes:_values -s , probe $probes' \
 			'--format[output format]:format:(table json csv markdown)' \
 			'--history[append the run to a JSONL history file]:path:_files' \

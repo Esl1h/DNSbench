@@ -380,3 +380,34 @@ fn test_short_durations_read_as_minutes_and_seconds() {
 	assert short_duration(59.6) == '1m00s'
 	assert short_duration(605.0) == '10m05s'
 }
+
+fn test_quick_measures_the_lookup_and_the_edge() ! {
+	o := parse_args(['--quick'])!
+	assert o.quick
+	assert o.probes == ['warm', 'ecs']
+}
+
+fn test_quick_refuses_to_be_half_overridden() {
+	for extra in [['--rounds', '3'], ['--probes', 'warm']] {
+		mut args := ['--quick']
+		args << extra
+		if _ := parse_args(args) {
+			assert false, '--quick accepted ${extra}'
+		} else {
+			assert err.msg().contains('--quick')
+		}
+	}
+}
+
+fn test_quick_rounds_are_the_fewest_that_still_rank() {
+	// docs/METHODOLOGY.md § Sample size: 30 samples for a ranked result. One
+	// round of global plus a regional set is 50; the global set alone needs two.
+	assert quick_rounds(50) == 1
+	assert quick_rounds(25) == 2
+	assert quick_rounds(30) == 1
+	assert quick_rounds(29) == 2
+	for n in [1, 7, 25, 29, 30, 31, 50, 100] {
+		assert quick_rounds(n) * n >= core.min_ranked_samples, '${n} domains'
+		assert (quick_rounds(n) - 1) * n < core.min_ranked_samples, '${n} domains: not the fewest'
+	}
+}

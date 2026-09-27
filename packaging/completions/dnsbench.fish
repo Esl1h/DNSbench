@@ -20,6 +20,7 @@ complete -c dnsbench -n "$main_run" -l catalog -r -d 'provider source' -a 'embed
 complete -c dnsbench -n "$main_run" -l require -r -d 'tags every measured provider must carry'
 complete -c dnsbench -n "$main_run" -l near -d 'reachability pre-pass for --catalog dnscrypt'
 complete -c dnsbench -n "$main_run" -l rounds -r -d 'measured rounds per provider'
+complete -c dnsbench -n "$main_run" -l quick -d 'warm and ecs, fewest rounds that still rank'
 complete -c dnsbench -n "$main_run" -l probes -r -d 'which probes to run' \
 	-a 'warm tcp cold ecs dot-fresh dot-warm doh dnssec filter'
 complete -c dnsbench -n "$main_run" -l format -r -d 'output format' -a 'table json csv markdown'

@@ -78,6 +78,9 @@ struct Options {
 	// to know. None means that check is off; the winning-provider check,
 	// OUTPUT.md's other example, always runs.
 	alert_edge_ms ?f64
+	// quick is the --quick preset: quick_probes, and the fewest rounds that
+	// clear the ranking floor, settled in run() once the domain set is known.
+	quick bool
 }
 
 fn main() {
@@ -581,6 +584,7 @@ fn usage_text() string {
 		'  --profile <name>   ${core.profiles.keys().join(', ')}  (default: balanced)',
 		'  --only <keys>      comma-separated provider keys',
 		'  --rounds <n>       measured rounds per provider (default: 5)',
+		'  --quick            warm and ecs only, with the fewest rounds that still rank',
 		'  --probes <names>   warm, tcp, cold, ecs, dot-fresh, dot-warm, doh, dnssec, filter',
 		'                     (default: warm)',
 		'  --format <name>    table, json, csv, markdown  (default: table)',
@@ -626,7 +630,8 @@ const value_options = ['--profile', '--only', '--rounds', '--probes', '--format'
 	'--timeout', '--cold-zone', '--ca-bundle', '--seed', '--palette', '--region', '--catalog',
 	'--require', '--last', '--asn', '--provider', '--file', '--watch', '--watch-count', '--alert-edge']
 
-const standalone_options = ['--force', '--tui', '--no-color', '--no-geo', '--near', '--plot']
+const standalone_options = ['--force', '--tui', '--no-color', '--no-geo', '--near', '--plot',
+	'--quick']
 
 fn parse_args(args []string) !Options {
 	mut o := Options{}
@@ -655,6 +660,9 @@ fn parse_args(args []string) !Options {
 				}
 				'--near' {
 					o = Options{ ...o, near: true }
+				}
+				'--quick' {
+					o = Options{ ...o, quick: true }
 				}
 				'--plot' {
 					o = Options{ ...o, plot: true }
@@ -805,10 +813,33 @@ fn parse_args(args []string) !Options {
 		}
 	}
 
+	if o.quick {
+		// A preset that also took --rounds or --probes would be a preset in
+		// name only; the user is already choosing what it would choose.
+		if '--rounds' in args || '--probes' in args {
+			return error('--quick sets the rounds and the probes itself; give --rounds and --probes instead')
+		}
+		o = Options{ ...o, probes: quick_probes }
+	}
 	if o.probes.len == 0 {
 		o = Options{ ...o, probes: ['warm'] }
 	}
 	return o
+}
+
+// quick_probes are what --quick measures: the everyday lookup, and the edge
+// penalty this tool exists for.
+const quick_probes = ['warm', 'ecs']
+
+// quick_rounds is the fewest counted rounds that still give every pair the
+// samples a ranked result needs: docs/METHODOLOGY.md § Sample size. One round
+// of the global set alone is 25 samples, below the floor, so a single round is
+// not always enough.
+fn quick_rounds(domains int) int {
+	if domains <= 0 {
+		return 1
+	}
+	return (core.min_ranked_samples + domains - 1) / domains
 }
 
 // A provider under measurement, with the samples it has produced so far.
@@ -851,7 +882,7 @@ mut:
 }
 
 fn run(requested Options, mut watcher Watcher) !store.RunResult {
-	opts := with_cold_zone(requested)
+	mut opts := with_cold_zone(requested)
 	started := time.now()
 	net := core.detect()
 
@@ -915,6 +946,12 @@ fn run(requested Options, mut watcher Watcher) !store.RunResult {
 	}
 
 	domain_set := warm_domains(origin.region)!
+	if opts.quick {
+		opts = Options{
+			...opts
+			rounds: quick_rounds(domain_set.domains.len)
+		}
+	}
 
 	// The edge probe is not a latency probe and does not belong in the plan: it
 	// asks each CDN host once per provider and times a TCP connect, where the

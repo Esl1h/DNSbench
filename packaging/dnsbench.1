@@ -82,6 +82,15 @@ Measured rounds per provider. Default 5. A round is one pass over the domain
 set, and an additional round 0 is sent and discarded because it pays for cache
 fill and route setup that no later query pays.
 .TP
+.B \-\-quick
+A shorter run: \fBwarm\fR and \fBecs\fR only, and the fewest rounds that
+still give every provider the 30 samples a ranked result needs, one round
+with a regional domain set and two with the global set alone. Refused
+together with
+.B \-\-rounds
+or
+.BR \-\-probes .
+.TP
 .BI \-\-probes " names"
 Comma\-separated, from \fBwarm\fR, \fBtcp\fR, \fBcold\fR, \fBecs\fR,
 \fBdot-fresh\fR, \fBdot-warm\fR, \fBdoh\fR, \fBdnssec\fR and \fBfilter\fR.

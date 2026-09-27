@@ -40,6 +40,7 @@ dnsbench --only cloudflare,quad9-ecs      # a subset, by catalog key
 dnsbench --profile streaming              # reweight: CDN edge dominates
 dnsbench --format json > run.json         # machine-readable
 dnsbench --tui --probes warm,ecs          # watch it happen, edge probe included
+dnsbench --quick                          # lookup and edge, in the fewest rounds that rank
 ```
 
 The default run is the `warm` probe only. The metric this tool exists for, the CDN edge
@@ -49,6 +50,12 @@ reflects real use, add it:
 ```sh
 dnsbench --probes warm,ecs,dot-warm,dnssec,filter
 ```
+
+`--quick` is the short version: `warm` and `ecs` only, and the fewest rounds that still give
+every provider the 30 samples a ranked result needs, which is one round when a regional domain
+set is in play and two with the global set alone. It runs in a fraction of the default time.
+The intervals behind the tiers are wider with fewer samples, so more providers share a rank.
+It is a preset, so it refuses `--rounds` and `--probes`; give those instead to choose.
 
 Catalog keys are the `key` fields in [`data/providers.toml`](../data/providers.toml), for
 example `cloudflare`, `google`, `quad9`, `quad9-ecs`, `adguard`, `mullvad`, `nextdns`,

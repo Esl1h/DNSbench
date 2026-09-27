@@ -30,6 +30,8 @@ comparability and `history` must be able to detect it.
   `cold_mode: off`, so existing history stays comparable.
 
 ### Added
+- `--quick`: `warm` and `ecs` only, in the fewest rounds that still clear the 30-sample
+  ranking floor for the domain set in use. Refused together with `--rounds` or `--probes`.
 - A progress line on stderr for the plain CLI, only when stderr is a terminal: queries done,
   elapsed, and an estimate of what is left, erased before the result is printed. A default
   run takes minutes and used to print nothing until the end.
