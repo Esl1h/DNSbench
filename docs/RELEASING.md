@@ -82,6 +82,10 @@ first failed CI run of 2026-09-26 was exactly this: fresh vc + cbf4e85).
 the `"[v:master] <sha>"` label in the vc log nearest, but not newer, to
 `V_COMMIT`. The workflows bootstrap V by hand instead of `make -C /tmp/v`,
 because the GNUmakefile `latest_vc` target unconditionally pulls vc master.
+`make -C /tmp/v local=1`, which skips that pull, was tried and is worse: it
+skips the tcc download too, then runs `cmd/tools/detect_tcc.v`, whose C
+compile fails without tcc, and V answers that failure by trying to send a
+bug report to bugs.vlang.io, which fails and reports itself in turn.
 
 **The version and the commit are compile-time defines, not file edits.**
 `-d version=` and `-d commit=`, read with `$d()`. Nothing in the source is
