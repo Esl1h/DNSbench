@@ -1650,13 +1650,19 @@ fn (mut w CliWatcher) tick(step int, total int, subjects []Subject) bool {
 		return true
 	}
 	now := time.now()
-	if w.drawn && now - w.last_draw < progress_interval {
+	last := step == total - 1
+	if w.drawn && !last && now - w.last_draw < progress_interval {
 		return true
 	}
 	w.last_draw = now
 	w.drawn = true
 	elapsed := f64((now - w.ctx.started).milliseconds()) / 1000.0
-	eprint('\r' + progress_line(step, total, elapsed) + '\x1b[K')
+	line := if last {
+		after_plan_line(w.ctx.opts.probes) or { progress_line(step, total, elapsed) }
+	} else {
+		progress_line(step, total, elapsed)
+	}
+	eprint('\r' + line + '\x1b[K')
 	return true
 }
 
@@ -1717,6 +1723,23 @@ fn progress_line(done int, total int, elapsed_s f64) string {
 		line += ', about ${short_duration(left)} left'
 	}
 	return line
+}
+
+// after_plan_line is what the progress line says once the last planned query
+// is out and the probes that run outside the plan are still to come: without
+// it the line sat at 99% through the whole edge and capability phase.
+fn after_plan_line(probes []string) ?string {
+	mut phases := []string{}
+	if 'ecs' in probes {
+		phases << 'edge'
+	}
+	if probes.any(it in capability_probes) {
+		phases << 'capability'
+	}
+	if phases.len == 0 {
+		return none
+	}
+	return 'dnsbench: planned queries done, now the ${phases.join(' and ')} probes'
 }
 
 fn short_duration(seconds f64) string {

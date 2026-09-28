@@ -493,6 +493,13 @@ fn test_the_help_points_at_the_manual() {
 	assert usage_text().contains('dnsbench help')
 }
 
+fn test_the_progress_line_names_the_phases_after_the_plan() {
+	assert after_plan_line(['warm', 'ecs'])? == 'dnsbench: planned queries done, now the edge probes'
+	assert after_plan_line(['warm', 'ecs', 'dnssec'])? == 'dnsbench: planned queries done, now the edge and capability probes'
+	assert after_plan_line(['warm', 'filter'])? == 'dnsbench: planned queries done, now the capability probes'
+	assert after_plan_line(['warm', 'cold']) == none
+}
+
 fn test_a_suspension_is_reported_whether_or_not_it_recovered() {
 	// Built from the subjects, not from the breaker at the end, so a partial
 	// result carries them too.
