@@ -342,12 +342,20 @@ fn test_connect_ms_gives_up_at_the_budget() ! {
 	// operating system's own is minutes long, so without the budget one bad
 	// address would stall a whole run.
 	sw := time.new_stopwatch()
+	mut reason := ''
 	if ms := connect_ms('192.0.2.1:443', 500 * time.millisecond) {
 		assert false, 'expected a timeout, got ${ms} ms'
+	} else {
+		reason = err.msg()
 	}
 	elapsed := sw.elapsed().milliseconds()
 
-	assert elapsed >= 500
+	// Without a default route, as in an offline package build, the SYN never
+	// leaves: the connect fails at once and there is no hang for the budget to
+	// cut short. Only a timeout proves the budget; either way it must hold.
+	if reason.contains(' within ') {
+		assert elapsed >= 500
+	}
 	assert elapsed < 1500
 }
 
@@ -360,12 +368,20 @@ fn test_tcp_transport_open_gives_up_at_the_budget() {
 	// nothing behind to stop the retry. docs/PLAN.md § Concurrency.
 	mut t := TcpTransport{}
 	sw := time.new_stopwatch()
+	mut reason := ''
 	if _ := t.open(ip: '192.0.2.1', port: 443, timeout: 500 * time.millisecond) {
 		assert false, 'expected an error'
+	} else {
+		reason = err.msg()
 	}
 	elapsed := sw.elapsed().milliseconds()
 
-	assert elapsed >= 500
+	// Without a default route, as in an offline package build, the SYN never
+	// leaves: the connect fails at once and there is no hang for the budget to
+	// cut short. Only a timeout proves the budget; either way it must hold.
+	if reason.contains(' within ') {
+		assert elapsed >= 500
+	}
 	assert elapsed < 1500
 }
 
