@@ -5,6 +5,11 @@
 # through the Makefile, which reads v.mod and git; a tarball has no git, so the
 # commit comes in through the environment instead and the build says which tag
 # it was cut from.
+#
+# The compiler is pinned too, and bootstrapped here from source the way the
+# release workflow does it: V is not in the official repositories, the AUR's
+# vlang is a different commit from the one CI tests with, and the binary is a
+# function of the compiler as much as of the source. docs/RELEASING.md.
 
 pkgname=dnsbench
 pkgver=0.2.0
@@ -14,25 +19,85 @@ arch=('x86_64' 'aarch64')
 url='https://github.com/Esl1h/DNSbench'
 license=('MIT')
 depends=('glibc')
-makedepends=('vlang' 'git')
-source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+makedepends=('gcc' 'make')
+_vlang=cbf4e8509630da710d04cc9fd0f777761ebe55a7
+_vc=9d047035b4c0e58e8649200fcf39f806a8d8b70c
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+	"vlang-$_vlang.tar.gz::https://github.com/vlang/v/archive/$_vlang.tar.gz"
+	"vc-$_vc.tar.gz::https://github.com/vlang/vc/archive/$_vc.tar.gz")
+sha256sums=('3b35df01babb320e549b503460bfc51156400ff0393d1e6bb98d222b5778d7d5'
+	'e2515319cb1d94000dd5b51fecf60c304385d49f480b3b03a97a7eb3b0b944eb'
+	'9d272b1e74007052ec7119f654ab1cff0175e2f67d0bf56ce0a03d0fbfe7b1a0')
+# The tcc bundle the compiler uses for everything but -prod builds, as CI has
+# it: tests compiled without it fail in ways CI never sees.
+_tccbin_x86_64=d6e7ac1b1bcc98aed734a6ecbfa8509f24606c74
+_tccbin_aarch64=125ad2e1153c7cb86f19ac4aa070063d18504462
+source_x86_64=("tccbin-$_tccbin_x86_64.tar.gz::https://github.com/vlang/tccbin/archive/$_tccbin_x86_64.tar.gz")
+source_aarch64=("tccbin-$_tccbin_aarch64.tar.gz::https://github.com/vlang/tccbin/archive/$_tccbin_aarch64.tar.gz")
+sha256sums_x86_64=('6e11e8f5b6afdc5e8c42122d9532f6065e89a60fd2ccec3cc0aa57ed31461aeb')
+sha256sums_aarch64=('d096b6d38052b715325ace9c55c02742952c045e1737d21121f7780becfe2f87')
+
+_v_env() {
+	# On a C compile failure V would otherwise try to send a report to its bug
+	# tracker. docs/V-NOTES.md.
+	export V_C_ERROR_BUG_REPORT_DISABLED=1
+	export VMODULES="$srcdir/.vmodules"
+	export PATH="$srcdir/v-$_vlang:$PATH"
+}
+
+prepare() {
+	rm -rf "v-$_vlang/vc"
+	mv "vc-$_vc" "v-$_vlang/vc"
+}
 
 build() {
-	cd "DNSbench-$pkgver"
+	# The compiler is built without makepkg's flags: V hands CFLAGS to the C
+	# compiler, and with LTO in them compiling cmd/v runs to many gigabytes.
+	# dnsbench itself is still built with them.
+	(
+		unset CFLAGS CXXFLAGS LDFLAGS
+		cd "v-$_vlang"
+		cc -std=c99 -w -o v1 vc/v.c -lm -lpthread
+		./v1 -no-parallel -o v2 -gc none cmd/v
+		./v2 -nocache -o v -gc none cmd/v
+		rm -f v1 v2
+		# After the bootstrap, as the workflows install it.
+		local tccbin="_tccbin_$CARCH"
+		rm -rf thirdparty/tcc
+		mv "$srcdir/tccbin-${!tccbin}" thirdparty/tcc
+	)
+
+	_v_env
+	cd "$srcdir/DNSbench-$pkgver"
 	make build COMMIT="v$pkgver"
 }
 
 check() {
+	_v_env
+	# v test compiles one test per CPU, about a gigabyte each, whatever the
+	# memory; cap the jobs at two GiB apiece, and drop makepkg's LTO flags,
+	# which the tests do not need.
+	local mem_jobs
+	mem_jobs=$(( $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) / 2097152 ))
+	export VJOBS=$(( mem_jobs < $(nproc) ? mem_jobs : $(nproc) ))
+	(( VJOBS >= 1 )) || VJOBS=1
+	unset CFLAGS CXXFLAGS LDFLAGS
 	cd "DNSbench-$pkgver"
 	# Never `make check`: it would run `make schema`, which wants a Python tool,
 	# and the tests are the part that has to pass in a build root.
-	make test
+	#
+	# VFLAGS emptied on the command line: the Makefile sets it to -prod and
+	# make exports that over any inherited value, and CI runs the tests
+	# without it.
+	make test VFLAGS=
 }
 
 package() {
+	_v_env
 	cd "DNSbench-$pkgver"
-	make install DESTDIR="$pkgdir" PREFIX=/usr
+	# make install depends on the build target, which is phony and runs again,
+	# so it needs the compiler and the same stamp as build().
+	make install DESTDIR="$pkgdir" PREFIX=/usr COMMIT="v$pkgver"
 	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 	install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 }

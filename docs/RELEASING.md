@@ -170,16 +170,19 @@ reported as finished when it is not:
 
 ## Not yet done
 
-**The Copr spec cannot build the pinned compiler.** `packaging/dnsbench.spec`'s
-`%build` runs `make -C v-<commit>`, the bootstrap `.github/workflows` stopped
-using: its `latest_vc` target clones vc master, which no longer builds
-`cbf4e85`, a source tarball has no git for it to work with, Copr builds
-offline by default, and the link needs `thirdparty/tcc/lib/libgc.a`, which only
-the tcc download provides. The fix is the workflows' hand bootstrap with vc
-and tccbin as pinned `Source` tarballs, and it has not been written because it
-has not been tested: that needs `rpmbuild` or `mock`. Until then Copr is the
-one channel a release does not reach. The AUR `PKGBUILD` builds with the
-distribution's own `vlang` and is unaffected.
+**Packages build from the next tag, not from v0.2.0.** The spec and the
+PKGBUILD bootstrap the pinned compiler by hand from pinned `Source` tarballs,
+V, vc and tccbin, with checksums, and build offline. What they build is a tag's
+tarball, and v0.2.0's predates three fixes they need: `make test`'s
+`-nocache`, the connect-budget tests that assumed a default route, and the
+bootstrap running outside the distribution's LTO flags. Both recipes were
+built end to end against the tree that carries those fixes, in Fedora and
+Arch containers capped at 4 CPUs and 8 GiB, the RPM with no network.
+
+**tcc is not pinned in the workflows.** `select_linux_tcc.sh` takes the newest
+host-compatible commit of `vlang/tccbin`'s `thirdparty-linux-<arch>` branch,
+so the compiler CI tests with is not fully a function of `V_COMMIT` and
+`VC_COMMIT`. The packages pin it; the workflows should too.
 
 **Signed release artifacts.** Nothing published here is signed. That is a
 separate question from `dnsbench update`, which verifies **DNSCrypt's** catalog
