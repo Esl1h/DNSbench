@@ -19,7 +19,7 @@ import store
 // Both are compile-time defines with a working default, so `v -o dnsbench cmd/`
 // still builds; `make build` fills them in from the repository so that a result
 // can be traced back to the code that produced it.
-const tool_version = $d('version', '0.1.0')
+const tool_version = $d('version', '0.2.0')
 
 const tool_commit = $d('commit', '')
 

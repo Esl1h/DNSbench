@@ -21,7 +21,7 @@ beside it under `--tui`.
 
 ```sh
 # linux/amd64, statically linked, no dependencies (arm64 too, on the releases page)
-curl -fsSLo dnsbench https://github.com/Esl1h/DNSbench/releases/latest/download/dnsbench-0.1.0-linux-amd64
+curl -fsSLo dnsbench https://github.com/Esl1h/DNSbench/releases/latest/download/dnsbench-0.2.0-linux-amd64
 chmod +x dnsbench && sudo mv dnsbench /usr/local/bin/
 ```
 
@@ -40,7 +40,7 @@ HTTP/1.1 outright.
 
 ## Status
 
-[`v0.1.0`](https://github.com/Esl1h/DNSbench/releases/tag/v0.1.0) is out
+[`v0.2.0`](https://github.com/Esl1h/DNSbench/releases/tag/v0.2.0) is out
 ([changelog](docs/CHANGELOG.md)). Working today: UDP, TCP, DoT, DoH; all nine probes; the
 composite score with five profiles and tiering; JSON, CSV, Markdown and JSONL output against
 a versioned schema; the TUI; history with sparklines; hijack detection; `--watch`; the

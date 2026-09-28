@@ -9,6 +9,8 @@ comparability and `history` must be able to detect it.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-27
+
 ### Fixed
 - CI bootstrap broke on any fresh runner: `make -C /tmp/v` pulled the latest
   `vlang/vc` generated-C snapshot, which no longer bootstraps the pinned

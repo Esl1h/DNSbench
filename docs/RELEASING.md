@@ -170,6 +170,17 @@ reported as finished when it is not:
 
 ## Not yet done
 
+**The Copr spec cannot build the pinned compiler.** `packaging/dnsbench.spec`'s
+`%build` runs `make -C v-<commit>`, the bootstrap `.github/workflows` stopped
+using: its `latest_vc` target clones vc master, which no longer builds
+`cbf4e85`, a source tarball has no git for it to work with, Copr builds
+offline by default, and the link needs `thirdparty/tcc/lib/libgc.a`, which only
+the tcc download provides. The fix is the workflows' hand bootstrap with vc
+and tccbin as pinned `Source` tarballs, and it has not been written because it
+has not been tested: that needs `rpmbuild` or `mock`. Until then Copr is the
+one channel a release does not reach. The AUR `PKGBUILD` builds with the
+distribution's own `vlang` and is unaffected.
+
 **Signed release artifacts.** Nothing published here is signed. That is a
 separate question from `dnsbench update`, which verifies **DNSCrypt's** catalog
 against **DNSCrypt's** published key and needs no key of ours; that is built and

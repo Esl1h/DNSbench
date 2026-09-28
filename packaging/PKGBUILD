@@ -7,7 +7,7 @@
 # it was cut from.
 
 pkgname=dnsbench
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc='Rank DNS resolvers from your own connection, including CDN edge quality'
 arch=('x86_64' 'aarch64')
