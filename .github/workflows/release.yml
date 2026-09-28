@@ -37,7 +37,7 @@ jobs:
             target: linux-arm64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Stage the source at the fixed build path
         run: |
@@ -81,7 +81,7 @@ jobs:
           ldd "dist/dnsbench-"*"-${{ matrix.target }}" || true
           "./dist/dnsbench-"*"-${{ matrix.target }}" --version
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: /build/dnsbench/dist/*
@@ -91,7 +91,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -101,7 +101,7 @@ jobs:
         run: cat SHA256SUMS-* > SHA256SUMS && rm -f SHA256SUMS-*
 
       - name: Publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           fail_on_unmatched_files: true

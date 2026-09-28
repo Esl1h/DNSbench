@@ -30,7 +30,7 @@ jobs:
     # pins ubuntu-22.04 for its build matrix; this matches it.
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The vc snapshot is pinned and the bootstrap is done by hand, because
       # GNUmakefile's latest_vc target unconditionally pulls vc master. This
