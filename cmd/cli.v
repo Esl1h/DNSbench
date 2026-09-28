@@ -953,6 +953,11 @@ mut:
 	// the loss it has seen so far instead of the loss of every query it has yet
 	// to send.
 	attempts map[string]int
+	// suspended names the probes core.Breaker stopped waiting on for this
+	// subject, and whether each answered afterwards. Kept here rather than
+	// read back from the breaker at the end, so that a run interrupted midway
+	// still reports them.
+	suspended map[string]bool
 	// doh_status is the first HTTP status a DoH endpoint answered with that was
 	// not 200, kept so the report can say why rather than only that.
 	doh_status int
@@ -1100,20 +1105,8 @@ fn run(requested Options, mut watcher Watcher) !store.RunResult {
 		domain_set_id: domain_set.id
 		opts: opts
 	})
-	trips := execute(plan, mut subjects, opts, ca_bundle, mut watcher)!
-	for t in trips {
-		label := subjects.filter(it.key == t.provider_key).map(it.label)[0] or { t.provider_key }
-		after := if t.recovered {
-			'it answered on a later round and was measured from there'
-		} else {
-			'one query per round after that, none answered'
-		}
-		warnings << store.Warning{
-			level: 'warn'
-			key: t.provider_key
-			message: '${label} ${t.probe}: no answer to the first ${core.breaker_misses} queries, stopped waiting on it for the round; ${after}'
-		}
-	}
+	execute(plan, mut subjects, opts, ca_bundle, mut watcher)!
+	warnings << suspension_warnings(subjects)
 
 	mut capabilities := map[string]Capability{}
 	if probes.any(it in capability_probes) {
@@ -1684,7 +1677,9 @@ fn (mut w CliWatcher) clear() {
 // are absent rather than provisional.
 fn (w CliWatcher) snapshot(subjects []Subject) store.RunResult {
 	duration := f64(time.since(w.ctx.started).microseconds()) / 1_000_000.0
-	partial := assemble(subjects, map[string]core.EdgePenalty{}, map[string]Capability{}, none, w.ctx.opts, w.ctx.net, w.ctx.origin, w.ctx.cat, w.ctx.started, duration, w.ctx.warnings, core.BootstrapSpec{ seed: w.ctx.opts.seed }, w.ctx.domain_set_id)
+	mut warnings := w.ctx.warnings.clone()
+	warnings << suspension_warnings(subjects)
+	partial := assemble(subjects, map[string]core.EdgePenalty{}, map[string]Capability{}, none, w.ctx.opts, w.ctx.net, w.ctx.origin, w.ctx.cat, w.ctx.started, duration, warnings, core.BootstrapSpec{ seed: w.ctx.opts.seed }, w.ctx.domain_set_id)
 	return store.RunResult{
 		...partial
 		run: store.Run{
@@ -1737,7 +1732,7 @@ fn short_duration(seconds f64) string {
 // A step that fails contributes to loss and nothing else; the run never stops
 // for one bad provider, because the networks where that happens are exactly the
 // ones worth measuring. docs/ARCHITECTURE.md § Failure policy.
-fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle string, mut watcher Watcher) ![]core.BreakerTrip {
+fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle string, mut watcher Watcher) ! {
 	mut udp := map[string]&core.UdpTransport{}
 	mut tcp := map[string]&core.TcpTransport{}
 	// One TLS connection per provider, held for the run. That is the whole
@@ -1823,12 +1818,18 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 
 		out := query_once(step, target, subjects[idx], opts, ca_bundle, mut udp, mut tcp, mut dot, mut doh, mut doh2) or {
 			breaker.record(step.provider_key, step.probe, step.round, false)
+			if recovered := breaker.state(step.provider_key, step.probe) {
+				subjects[idx].suspended[step.probe] = recovered
+			}
 			if !step.discard {
 				subjects[idx].failed[step.probe]++
 			}
 			continue
 		}
 		breaker.record(step.provider_key, step.probe, step.round, true)
+		if step.probe in subjects[idx].suspended {
+			subjects[idx].suspended[step.probe] = true
+		}
 
 		// Kept before the discard check, because the very first exchange is the
 		// discarded one and an endpoint that refuses the HTTP version refuses
@@ -1853,7 +1854,6 @@ fn execute(plan []core.Step, mut subjects []Subject, opts Options, ca_bundle str
 		}
 		subjects[idx].samples[step.probe] << out.ms
 	}
-	return breaker.trips()
 }
 
 // TcpWarm, DotWarm and DohWarm carry one concurrent connection attempt back
@@ -2468,6 +2468,29 @@ fn transports_used(probes []string) []string {
 // resolver, because they are ordinary public names and this is the resolver an
 // ordinary lookup would use. Empty when the machine has none configured, which
 // skips the lookup rather than picking a public resolver on the user's behalf.
+// suspension_warnings reports every probe the breaker stopped waiting on.
+// docs/METHODOLOGY.md § Give up on silence.
+fn suspension_warnings(subjects []Subject) []store.Warning {
+	mut out := []store.Warning{}
+	for s in subjects {
+		mut probes := s.suspended.keys()
+		probes.sort()
+		for probe in probes {
+			after := if s.suspended[probe] {
+				'it answered on a later round and was measured from there'
+			} else {
+				'one query per round after that, none answered'
+			}
+			out << store.Warning{
+				level: 'warn'
+				key: s.key
+				message: '${s.label} ${probe}: no answer to the first ${core.breaker_misses} queries, stopped waiting on it for the round; ${after}'
+			}
+		}
+	}
+	return out
+}
+
 // answered_as_expected says whether an rcode is the answer the question was
 // built to get. A random label under a public domain has no record, so in
 // `wild` NXDOMAIN is the recursion completing, not a resolver declining; every

@@ -210,15 +210,6 @@ mut:
 	round int
 }
 
-// BreakerTrip names a pair the breaker suspended, and whether it answered
-// afterwards.
-pub struct BreakerTrip {
-pub:
-	provider_key string
-	probe        string
-	recovered    bool
-}
-
 // allow says whether the step may be sent.
 pub fn (mut b Breaker) allow(key string, probe string, round int) bool {
 	id := '${key}/${probe}'
@@ -252,18 +243,13 @@ pub fn (mut b Breaker) record(key string, probe string, round int, answered bool
 	b.pairs[id] = pair
 }
 
-// trips lists every pair the breaker suspended during the run.
-pub fn (b Breaker) trips() []BreakerTrip {
-	mut out := []BreakerTrip{}
-	for id, pair in b.pairs {
-		if pair.misses < breaker_misses {
-			continue
-		}
-		out << BreakerTrip{
-			provider_key: id.all_before_last('/')
-			probe: id.all_after_last('/')
-			recovered: pair.answered
-		}
+// state says whether a pair has been suspended, and if so whether it answered
+// afterwards: none when it never was, false while it is still silent, true once
+// it came back.
+pub fn (b Breaker) state(key string, probe string) ?bool {
+	pair := b.pairs['${key}/${probe}'] or { return none }
+	if pair.misses < breaker_misses {
+		return none
 	}
-	return out
+	return pair.answered
 }

@@ -492,3 +492,34 @@ fn test_the_built_in_manual_is_the_packaged_one() ! {
 fn test_the_help_points_at_the_manual() {
 	assert usage_text().contains('dnsbench help')
 }
+
+fn test_a_suspension_is_reported_whether_or_not_it_recovered() {
+	// Built from the subjects, not from the breaker at the end, so a partial
+	// result carries them too.
+	subjects := [
+		Subject{
+			key: 'dead'
+			label: 'Dead'
+			suspended: {
+				'warm': false
+			}
+		},
+		Subject{
+			key: 'back'
+			label: 'Back'
+			suspended: {
+				'warm': true
+			}
+		},
+		Subject{
+			key: 'fine'
+			label: 'Fine'
+		},
+	]
+	warnings := suspension_warnings(subjects)
+	assert warnings.len == 2
+	assert warnings[0].key == 'dead'
+	assert warnings[0].message.contains('none answered')
+	assert warnings[1].key == 'back'
+	assert warnings[1].message.contains('answered on a later round')
+}

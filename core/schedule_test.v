@@ -371,11 +371,7 @@ fn test_a_target_that_never_answers_costs_a_few_queries_not_a_round() {
 		assert feed(mut b, 'dead', round, 50, false) == 1, 'round ${round}'
 	}
 
-	trips := b.trips()
-	assert trips.len == 1
-	assert trips[0].provider_key == 'dead'
-	assert trips[0].probe == 'warm'
-	assert !trips[0].recovered
+	assert b.state('dead', 'warm')? == false
 }
 
 fn test_a_lossy_target_is_never_cut_short() {
@@ -389,7 +385,7 @@ fn test_a_lossy_target_is_never_cut_short() {
 	for round in 1 .. 6 {
 		assert feed(mut b, 'lossy', round, 50, false) == 50
 	}
-	assert b.trips().len == 0
+	assert b.state('lossy', 'warm') == none
 }
 
 fn test_a_drop_in_the_link_costs_a_live_target_one_round_at_most() {
@@ -402,9 +398,7 @@ fn test_a_drop_in_the_link_costs_a_live_target_one_round_at_most() {
 	assert feed(mut b, 'live', 1, 50, true) == 50
 	assert feed(mut b, 'live', 2, 50, false) == 50
 
-	trips := b.trips()
-	assert trips.len == 1
-	assert trips[0].recovered
+	assert b.state('live', 'warm')? == true
 }
 
 fn test_a_refusal_is_an_answer() {
@@ -430,5 +424,5 @@ fn test_misses_below_the_threshold_suspend_nothing() {
 
 	assert feed(mut b, 'slow', 0, breaker_misses - 1, false) == breaker_misses - 1
 	assert b.allow('slow', 'warm', 0)
-	assert b.trips().len == 0
+	assert b.state('slow', 'warm') == none
 }
