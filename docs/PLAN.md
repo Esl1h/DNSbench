@@ -177,6 +177,13 @@ to be measured; one address back means the zone is up. When none answers, `cold`
 with a warning. In `wild`, NXDOMAIN is the answer the question was built to get, so it counts
 as a sample there and nowhere else.
 
+`wild` checked against `dig` (`kdig` is not installed on the machine this was verified on) on
+Cloudflare `1.1.1.1`, the same 50 domains, a fresh 16-character label per query, two passes in
+alternating order: dnsbench 30.7 ms against dig 27 ms, then dig 49 ms against dnsbench 45.6 ms.
+The link moved between passes; within each, the gap is about 4 ms and changes sign with the
+order, which is noise and not a bias. Each tool lost one query in the second pass and counted
+it as loss.
+
 ### What the TUI cost, and what it changed underneath
 
 The frame loop was the smaller half. Three things in the layer below had to change, and each
