@@ -687,3 +687,21 @@ skipped in GitHub CI for the default URL, and nowhere else by default.
 This is how `make -C <v> local=1` went wrong as a bootstrap: it skips the tcc download, then
 runs `cmd/tools/detect_tcc.v`, which fails to link without `thirdparty/tcc/lib/libgc.a`,
 which set this off. docs/RELEASING.md records why the workflows bootstrap by hand.
+
+## The module cache breaks parallel tests on a cold start
+
+With an empty `VMODULES` cache and several test files compiling at once, the pinned compiler can
+hand a test a cached `toml` module built for a different test, one that dropped a method this
+test needs. The test then panics at run time:
+
+```
+V panic: interface method walker__Modifier.modify not implemented
+```
+
+The tell is the compile time: the files that fail compiled in about 2 s where the first batch
+took 19 s, because they picked up what the first batch had just cached. It hits
+`catalog/model_test.v` and `catalog/userconf_test.v`, reproducibly on a cold cache with four
+jobs, and a warm local cache hides it, which is why it surfaced in the package builds and not
+in daily work. `-nocache` removes it, and on this suite it is also faster, 3.5 s against 20 s
+for `catalog/`. `make test` passes it.
+

@@ -50,7 +50,7 @@ run: dev
 	./$(BIN)
 
 test:
-	v $(DFLAGS) test .
+	v $(DFLAGS) -nocache test .
 
 fmt:
 	v fmt -w .
