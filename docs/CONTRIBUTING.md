@@ -9,7 +9,11 @@ Number formatting is locale-independent (`.` decimal separator) everywhere.
 
 ## Code style
 
-- `v fmt -w` before every commit. CI rejects unformatted code.
+- `v fmt -w` before every commit. CI rejects unformatted code, and it formats with the
+  pinned compiler (`V_COMMIT` in `.github/workflows/ci.yml`): `v fmt` output differs between
+  compiler versions, so a file a newer local V calls formatted can still fail CI.
+  `docs/V-NOTES.md` § v fmt has the known differences; `docs/RELEASING.md` § Reproducing a
+  published binary has the commands to build the pinned compiler.
 - `v vet` clean.
 - No `panic()` outside `main`. Library code returns `!T` or `?T`.
 - Comments explain **why**, not what. `// discard the first sample: it pays for the TLS
