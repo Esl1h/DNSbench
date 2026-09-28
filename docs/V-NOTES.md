@@ -498,6 +498,13 @@ compile fails somewhere the edit did not happen.
 - `s#[..-1]`, the relative-slice form, is rewritten to `s[..-1]`, which is a compile error.
   Use `s.substr(0, s.len - 1)`.
 
+A third one compiles but reads wrong: a comment that opens an `or { }` block is moved out to
+the statement it belongs to, leaving `result := ` alone on a line, the comment below it, and
+the call after that. Newer compilers leave the comment where it was, so a file formatted
+locally passes there and fails `fmt-check` in CI. Put the comment above the statement.
+`v fmt` output depends on the compiler version; formatting with anything but the pinned one
+is a guess.
+
 ## A module split across files needs the directory, not a file
 
 `v -o dnsbench cmd/cli.v` compiles that one file and nothing else in `cmd/`, so the moment the
@@ -613,3 +620,70 @@ public API) coexist without a single `$if` in the callers. `$if flagname ?
 {}` (the `?` distinguishes a custom `-d` define from a built-in condition
 like `$if linux {}`) does the same thing inline, verified separately, but
 the file-suffix form needed no wrapping of existing top-level declarations.
+
+## Width padding counts visible characters, not bytes
+
+`'${s:-12s}'` pads to twelve visible characters: `'São Paulo'` is ten bytes and nine
+characters, and gets three spaces. `utf8_str_visible_length(s)` is the same count, for a
+width that has to be computed, since `'${s:-${w}s}'` does not compile (see Format verbs).
+`int_max` is a builtin.
+
+## Signals: a closure handler, and an atomic rather than a channel
+
+`os.signal_opt(.int, handler)` takes a closure, `fn [mut flag] (_ os.Signal) { ... }`, the
+way `vlib/net/unix/stream.c.v` already uses it. What the closure touches has to be safe to
+touch from a signal handler, which runs on whatever thread the signal lands on, possibly one
+already holding a channel's lock: a `try_push` from the handler can deadlock that thread
+against itself. `sync.stdatomic` is lock-free:
+
+```v
+import sync.stdatomic
+
+mut flag := stdatomic.new_atomic(false) // &AtomicVal[bool]
+os.signal_opt(.int, fn [mut flag] (_ os.Signal) {
+	flag.store(true)
+}) or {}
+// elsewhere
+if flag.load() { ... }
+```
+
+`load` and `store` take a `mut` receiver, so a function receiving the flag declares it
+`mut interrupted stdatomic.AtomicVal[bool]` and the call site passes `mut interrupted`.
+
+Two consequences for anything waiting when the signal arrives. `time.sleep` loops on
+`nanosleep` and resumes the remaining time after `EINTR` (`vlib/time/time_nix.c.v:142`), so a
+long sleep does not end on Ctrl+C; sleep in short slices and check the flag. `net`'s `select`
+retries on `EINTR` (`vlib/net/common.c.v:158`), so a query in flight completes normally and
+the program sees the flag at its next check.
+
+## Writing to a subprocess: C.popen in write mode
+
+The `os` module only reads from subprocesses (`os.execute`, `vpopen` in `'r'` mode). Writing
+to one's standard input works with the C function directly, which `os` already declares, so
+`main` can call it; `pclose` needs its own declaration:
+
+```v
+fn C.pclose(stream voidptr) int
+
+stream := C.popen(c'man -l -', c'w')
+if !isnil(stream) {
+	C.fwrite(text.str, 1, text.len, stream)
+	code := C.pclose(stream)
+}
+```
+
+The child inherits the terminal for its standard output, so a pager it starts works. No
+temporary file is needed, which avoids a predictable path in a shared `/tmp`. `dnsbench help`
+is built on this.
+
+## The compiler reports its own C errors to bugs.vlang.io
+
+When the generated C fails to compile, V builds `cmd/tools/vbug-report-send` and tries to
+send a report to `https://bugs.vlang.io/bug-report`, the report file left under
+`/tmp/v_<uid>/`. If building the sender fails too, that failure is reported in turn. It is
+skipped in GitHub CI for the default URL, and nowhere else by default.
+`V_C_ERROR_BUG_REPORT_DISABLED=1` turns it off (`vlib/v/builder/c_error_report.v:12`).
+
+This is how `make -C <v> local=1` went wrong as a bootstrap: it skips the tcc download, then
+runs `cmd/tools/detect_tcc.v`, which fails to link without `thirdparty/tcc/lib/libgc.a`,
+which set this off. docs/RELEASING.md records why the workflows bootstrap by hand.
