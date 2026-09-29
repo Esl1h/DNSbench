@@ -116,9 +116,8 @@ cd /tmp/v
 cc -std=c99 -w -o /tmp/v/v1 /tmp/v/vc/v.c -lm -lpthread
 /tmp/v/v1 -no-parallel -o /tmp/v/v2 -gc none cmd/v
 /tmp/v/v2 -nocache -o /tmp/v/v -gc none cmd/v
-tmarch=amd64; [ "$(uname -m)" = aarch64 ] && tmarch=arm64
-bash /tmp/v/cmd/tools/select_linux_tcc.sh fresh /tmp/v/thirdparty/tcc \
-    https://github.com/vlang/tccbin "$tmarch" /tmp/v
+git clone https://github.com/vlang/tccbin /tmp/v/thirdparty/tcc
+git -C /tmp/v/thirdparty/tcc checkout <TCC_COMMIT_AMD64 or TCC_COMMIT_ARM64>
 sudo mkdir -p /build && sudo git clone --branch v0.1.0 \
     https://github.com/Esl1h/DNSbench /build/dnsbench
 sudo chown -R "$USER" /build/dnsbench
@@ -130,6 +129,9 @@ sha256sum -c SHA256SUMS
 never the current one. So is `VC_COMMIT`, for every tag cut after the vc pin
 was added. A tag older than that, v0.1.0 included, has no `VC_COMMIT` in its
 workflow: use `9d047035`, the snapshot verified to bootstrap its `cbf4e85`.
+`TCC_COMMIT_AMD64` and `TCC_COMMIT_ARM64` are there from v0.2.1 on; v0.2.0 and
+v0.1.0 took the branch heads of their day, which for v0.2.0 were the two
+commits the workflows now pin.
 
 ## Packaging
 
@@ -178,11 +180,6 @@ tarball, and v0.2.0's predates three fixes they need: `make test`'s
 bootstrap running outside the distribution's LTO flags. Both recipes were
 built end to end against the tree that carries those fixes, in Fedora and
 Arch containers capped at 4 CPUs and 8 GiB, the RPM with no network.
-
-**tcc is not pinned in the workflows.** `select_linux_tcc.sh` takes the newest
-host-compatible commit of `vlang/tccbin`'s `thirdparty-linux-<arch>` branch,
-so the compiler CI tests with is not fully a function of `V_COMMIT` and
-`VC_COMMIT`. The packages pin it; the workflows should too.
 
 **Signed release artifacts.** Nothing published here is signed. That is a
 separate question from `dnsbench update`, which verifies **DNSCrypt's** catalog

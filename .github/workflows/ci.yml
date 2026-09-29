@@ -19,6 +19,12 @@ env:
   # the newest one that still bootstraps the V_COMMIT of the day by finding
   # its "[v:master] <sha>" label in the vc log.
   VC_COMMIT: 9d047035
+  # The tcc bundle is pinned too. select_linux_tcc.sh takes the newest
+  # host-compatible commit of the thirdparty-linux-<arch> branch, so the
+  # compiler this tests with drifted without any change here. These are the
+  # commits packaging/dnsbench.spec and packaging/PKGBUILD pin.
+  TCC_COMMIT_AMD64: d6e7ac1b1bcc98aed734a6ecbfa8509f24606c74
+  TCC_COMMIT_ARM64: 125ad2e1153c7cb86f19ac4aa070063d18504462
 
 jobs:
   check:
@@ -47,8 +53,8 @@ jobs:
           /tmp/v/v1 -no-parallel -o /tmp/v/v2 -gc none cmd/v
           /tmp/v/v2 -nocache -o /tmp/v/v -gc none cmd/v
           rm -f /tmp/v/v1 /tmp/v/v2
-          bash /tmp/v/cmd/tools/select_linux_tcc.sh fresh /tmp/v/thirdparty/tcc \
-            https://github.com/vlang/tccbin amd64 /tmp/v
+          git clone --filter=blob:none https://github.com/vlang/tccbin /tmp/v/thirdparty/tcc
+          git -C /tmp/v/thirdparty/tcc checkout "$TCC_COMMIT_AMD64"
           echo "/tmp/v" >> "$GITHUB_PATH"
 
       # Every step below goes through the Makefile rather than repeating the
