@@ -94,9 +94,19 @@ operator, and how it was chosen.
 
 ## Where this stands
 
-Phases 0 to 6 are done, which is M0 through M4. Every probe the milestone list names exists
-and both frontends are built. `make check` is clean: `v fmt -verify`, `v vet`, fifteen test
-files, and the golden run result validating against `schema/result.schema.json`.
+Phases 0 to 6 are done, which is M0 through M4, and every M5 item with them. Every probe the
+milestone list names exists and both frontends are built. `make check` is clean: `v fmt
+-verify`, `v vet`, twenty-six test files, and the golden run result validating against
+`schema/result.schema.json`. v0.2.1 is released, and it is the first tag the AUR PKGBUILD and
+the Copr spec build from. No milestone after M5 is written down yet.
+
+Open, and known:
+
+- `core/schedule_test.v` fails when the pinned compiler builds it with `-prod`: two breaker
+  tests panic on option propagation. The same code built `-prod` into the binary behaves
+  correctly, verified end to end with a black-hole provider, and neither CI nor the package
+  recipes run the tests with `-prod`. Not reproduced in smaller pieces.
+- Publishing to the AUR and Copr needs the maintainer's accounts; the recipes are ready.
 
 | Module | What it does |
 |---|---|
@@ -126,8 +136,7 @@ A full run today:
 
 ```sh
 make build
-./dnsbench --probes warm,cold,ecs,dot-fresh,dot-warm,doh,dnssec,filter \
-           --cold-zone probe.dnsbench.esli.blog
+./dnsbench --probes warm,cold,ecs,dot-fresh,dot-warm,doh,dnssec,filter
 ```
 
 `--force` is needed wherever a tunnel interface is up. Without it the run refuses and says why,
