@@ -176,7 +176,7 @@ reported as finished when it is not:
 
 ## Not yet done
 
-**Packages build from the next tag, not from v0.2.0.** The spec and the
+**Packages build from v0.2.1 on, not from v0.2.0.** The spec and the
 PKGBUILD bootstrap the pinned compiler by hand from pinned `Source` tarballs,
 V, vc and tccbin, with checksums, and build offline. What they build is a tag's
 tarball, and v0.2.0's predates three fixes they need: `make test`'s
@@ -184,6 +184,7 @@ tarball, and v0.2.0's predates three fixes they need: `make test`'s
 bootstrap running outside the distribution's LTO flags. Both recipes were
 built end to end against the tree that carries those fixes, in Fedora and
 Arch containers capped at 4 CPUs and 8 GiB, the RPM with no network.
+Publishing them is a step that needs an account; see above.
 
 **Signed release artifacts.** Nothing published here is signed. That is a
 separate question from `dnsbench update`, which verifies **DNSCrypt's** catalog
