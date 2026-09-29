@@ -21,7 +21,7 @@
 %global debug_package %{nil}
 
 Name:           dnsbench
-Version:        0.2.0
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        Rank DNS resolvers from your own connection, including CDN edge quality
 
@@ -123,6 +123,8 @@ make install DESTDIR=%{buildroot} PREFIX=%{_prefix} COMMIT="v%{version}"
 %{_datadir}/fish/vendor_completions.d/dnsbench.fish
 
 %changelog
+* Mon Sep 28 2026 Esli Silva <not.announced@simplelogin.fr> - 0.2.1-1
+- Bootstrap the pinned compiler offline from pinned V, vc and tccbin sources.
 * Sun Sep 27 2026 Esli Silva <not.announced@simplelogin.fr> - 0.2.0-1
 - Update to 0.2.0.
 * Sat Aug 29 2026 Esli Silva <not.announced@simplelogin.fr> - 0.1.0-1

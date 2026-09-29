@@ -9,6 +9,24 @@ comparability and `history` must be able to detect it.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-28
+
+### Fixed
+- The Fedora Copr spec and the Arch PKGBUILD could not build. The spec ran V's own `make`, which
+  pulls vc master and needs a network Copr does not give; the PKGBUILD depended on `vlang`,
+  which is not in Arch's repositories. Both now bootstrap the pinned compiler offline from
+  pinned V, vc and tccbin tarballs, the way the workflows do, build it outside the
+  distribution's LTO flags, which took it past 8 GiB, and cap test jobs by memory.
+- `make test` could fail on a cold module cache: two catalog tests panicked in the pinned
+  compiler's `toml` walker when test files compiled in parallel. It now runs with `-nocache`.
+- The three connect-budget tests failed where there is no default route, as in an offline
+  build root; a timeout is now required only when the error says it was one.
+
+### Changed
+- Every GitHub Action moved to its Node 24 major, ahead of the Node 20 runtime's retirement.
+- The tcc bundle is pinned per architecture in the workflows, as it already was in the
+  package recipes, instead of following the tccbin branch head.
+
 ## [0.2.0] - 2026-09-27
 
 ### Fixed

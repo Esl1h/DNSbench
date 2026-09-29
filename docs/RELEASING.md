@@ -40,6 +40,10 @@ be able to detect it.
 6. **`.github/workflows/release.yml` does the rest**: it builds each target
    natively, statically linked against musl, confirms the binary runs, and
    publishes the artifacts with one `SHA256SUMS` over all of them.
+7. **Pin the tarball checksum.** `packaging/PKGBUILD` carries `SKIP` for the
+   release tarball until the tag exists; once it does, hash
+   `<url>/archive/refs/tags/v<version>.tar.gz` twice, put the value in, and
+   commit. The spec needs nothing: RPM carries no source checksums.
 
 ### Rehearsing
 
