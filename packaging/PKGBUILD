@@ -25,9 +25,7 @@ _vc=9d047035b4c0e58e8649200fcf39f806a8d8b70c
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
 	"vlang-$_vlang.tar.gz::https://github.com/vlang/v/archive/$_vlang.tar.gz"
 	"vc-$_vc.tar.gz::https://github.com/vlang/vc/archive/$_vc.tar.gz")
-# The first checksum exists only once the tag does: it is pinned in the commit
-# after the release. docs/RELEASING.md § The procedure.
-sha256sums=('SKIP'
+sha256sums=('407351cedb59fc3c7ca468d4c13c10626a7c0aef8f7540670daa6d179d2b34b4'
 	'e2515319cb1d94000dd5b51fecf60c304385d49f480b3b03a97a7eb3b0b944eb'
 	'9d272b1e74007052ec7119f654ab1cff0175e2f67d0bf56ce0a03d0fbfe7b1a0')
 # The tcc bundle the compiler uses for everything but -prod builds, as CI has
